@@ -7,6 +7,7 @@ import * as THREE from 'three';
 import React from 'react';
 
 export enum GameStatus {
+  LOADING = 'LOADING',
   MENU = 'MENU',
   PLAYING = 'PLAYING',
   ANALYZING = 'ANALYZING',

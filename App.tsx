@@ -35,13 +35,16 @@ const App: React.FC = () => {
     }, [fingerCount]);
 
     // Game State
-    const [status, setStatus] = useState<GameStatus>(GameStatus.MENU);
+    const [status, setStatus] = useState<GameStatus>(GameStatus.LOADING);
     const [difficulty, setDifficulty] = useState<Difficulty>('EASY');
     const [sequence, setSequence] = useState<number[]>([]);
     const [currentBeat, setCurrentBeat] = useState(-1);
     const [countdown, setCountdown] = useState<number | null>(null);
     const [capturedFrames, setCapturedFrames] = useState<string[]>([]);
     const [isMuted, setIsMuted] = useState(false);
+    
+    // Loading State
+    const [isAssetsReady, setIsAssetsReady] = useState(false);
     
     // Real-time Results
     const [localResults, setLocalResults] = useState<(boolean | null)[]>([]);
@@ -74,25 +77,26 @@ const App: React.FC = () => {
         }
         const ctx = audioCtxRef.current;
 
-        // Load all tracks
-        if (!introBufferRef.current) introBufferRef.current = await loadAudioBuffer(MUSIC_INTRO_URL, ctx);
-        if (!gameBufferRef.current) gameBufferRef.current = await loadAudioBuffer(MUSIC_GAME_URL, ctx);
-        if (!scoreBufferRef.current) scoreBufferRef.current = await loadAudioBuffer(MUSIC_SCORE_URL, ctx);
+        // Load all tracks in parallel
+        const [intro, game, score] = await Promise.all([
+            introBufferRef.current ? Promise.resolve(introBufferRef.current) : loadAudioBuffer(MUSIC_INTRO_URL, ctx),
+            gameBufferRef.current ? Promise.resolve(gameBufferRef.current) : loadAudioBuffer(MUSIC_GAME_URL, ctx),
+            scoreBufferRef.current ? Promise.resolve(scoreBufferRef.current) : loadAudioBuffer(MUSIC_SCORE_URL, ctx),
+        ]);
+        
+        introBufferRef.current = intro;
+        gameBufferRef.current = game;
+        scoreBufferRef.current = score;
     }, []);
 
-    // Initialize audio on mount/interaction
+    // Start loading assets immediately on mount
     useEffect(() => {
-        const handleInteraction = () => {
-             initAudio().then(() => {
-                 if (status === GameStatus.MENU) {
-                     playTrack('intro');
-                 }
-             });
-             window.removeEventListener('click', handleInteraction);
+        const loadAssets = async () => {
+            await initAudio();
+            setIsAssetsReady(true);
         };
-        window.addEventListener('click', handleInteraction);
-        return () => window.removeEventListener('click', handleInteraction);
-    }, []);
+        loadAssets();
+    }, [initAudio]);
 
     // Generic Play Track Function (mute only affects background music)
     // startOffset: time in seconds to start playback from (for skipping intros)
@@ -160,6 +164,19 @@ const App: React.FC = () => {
         }
         currentGainRef.current = null;
     }, []);
+
+    // Handle "Enter Studio" button click
+    const handleEnterStudio = useCallback(() => {
+        if (!isAssetsReady) return;
+        
+        // Resume AudioContext (required after user gesture)
+        if (audioCtxRef.current?.state === 'suspended') {
+            audioCtxRef.current.resume();
+        }
+        
+        setStatus(GameStatus.MENU);
+        playTrack('intro');
+    }, [isAssetsReady, playTrack]);
 
     // Effect to switch music based on state (except Playing, which is handled in startGame)
     useEffect(() => {
@@ -285,7 +302,6 @@ const App: React.FC = () => {
 
     // --- GAME LOOP ---
     const startGame = async () => {
-        await initAudio();
         const newSequence = generateSequence(difficulty);
         setSequence(newSequence);
         setLocalResults(new Array(newSequence.length).fill(null));
@@ -535,7 +551,7 @@ const App: React.FC = () => {
             </button>
 
             {/* DETECTED NUMBER - TOP CENTER */}
-            {isCameraReady && status !== GameStatus.RESULT && (
+            {isCameraReady && status !== GameStatus.RESULT && status !== GameStatus.LOADING && (
                 <div className="absolute top-4 md:top-8 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center pointer-events-none">
                     <div className="text-[10px] md:text-[12px] text-[#00f3ff] tracking-[0.2em] md:tracking-[0.3em] font-bold mb-0.5 md:mb-1 uppercase text-glow">
                         Finger Count
@@ -549,6 +565,37 @@ const App: React.FC = () => {
             {/* Main Content Container */}
             <div className="absolute inset-0 z-20 flex flex-col items-center justify-center p-3 md:p-4">
                 
+                {/* --- LOADING STATE (Entry Screen) --- */}
+                {status === GameStatus.LOADING && (
+                    <div className="glass-panel p-6 md:p-8 rounded-3xl max-w-md w-full mx-4 flex flex-col gap-5 md:gap-6 animate-pop">
+                        {/* Title */}
+                        <div className="text-center">
+                            <h1 className="text-3xl md:text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-[#00f3ff] to-[#ff00ff] mb-1 md:mb-2">
+                                RHYTHM HANDS
+                            </h1>
+                            <p className="text-white/60 text-xs md:text-sm">
+                                {isAssetsReady ? 'System Ready.' : 'Loading assets...'}
+                            </p>
+                        </div>
+
+                        {/* Enter Button */}
+                        <button
+                            onClick={handleEnterStudio}
+                            disabled={!isAssetsReady}
+                            className={`
+                                w-full py-3 md:py-4 rounded-xl text-base md:text-lg font-black uppercase tracking-widest transition-all duration-300
+                                ${isAssetsReady 
+                                    ? 'bg-gradient-to-r from-[#00f3ff] to-[#ff00ff] text-black hover:shadow-[0_0_30px_rgba(255,255,255,0.5)] active:scale-95' 
+                                    : 'bg-white/10 text-white/30 cursor-not-allowed'
+                                }
+                                shadow-[0_0_20px_rgba(0,243,255,0.3)]
+                            `}
+                        >
+                            {isAssetsReady ? 'ENTER STUDIO' : 'LOADING...'}
+                        </button>
+                    </div>
+                )}
+
                 {/* --- MENU STATE --- */}
                 {status === GameStatus.MENU && (
                     <div className="flex flex-col items-center gap-4 md:gap-8 animate-pop w-full max-w-sm md:max-w-none">
