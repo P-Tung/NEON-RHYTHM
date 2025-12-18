@@ -207,11 +207,6 @@ const App: React.FC = () => {
       const ctx = audioCtxRef.current;
       if (!ctx) return;
 
-      // Ensure context is running (can be suspended by system/phone calls)
-      if (ctx.state === "suspended") {
-        ctx.resume();
-      }
-
       // Stop currently playing track
       if (currentSourceRef.current) {
         try {
@@ -230,21 +225,19 @@ const App: React.FC = () => {
         case "intro":
           buffer = introBufferRef.current;
           volume = 0.2;
-          offset = 0; // Always start intro from beginning
+          offset = 0;
           break;
         case "game":
           buffer = gameBufferRef.current;
           volume = 0.5;
-          // Pitch shift for game difficulty
           const targetBPM = DIFFICULTIES[difficulty].bpm;
           playbackRate = targetBPM / BASE_BPM;
-          // Adjust offset for playback rate (faster = less time to first beat)
           offset = startOffset / playbackRate;
           break;
         case "score":
           buffer = scoreBufferRef.current;
           volume = 0.2;
-          offset = 0; // Always start score from beginning
+          offset = 0;
           break;
       }
 
@@ -255,15 +248,13 @@ const App: React.FC = () => {
         source.playbackRate.value = playbackRate;
 
         const gain = ctx.createGain();
-        // Set volume to 0 if muted, otherwise use the normal volume
         gain.gain.value = isMuted ? 0 : volume;
 
         source.connect(gain);
         gain.connect(ctx.destination);
-        // Start from offset position (skip intro if specified)
         source.start(0, offset);
         currentSourceRef.current = source;
-        currentGainRef.current = gain; // Store gain reference for mute control
+        currentGainRef.current = gain;
       }
     },
     [isMuted, difficulty]
@@ -283,23 +274,25 @@ const App: React.FC = () => {
   const handleEnterStudio = useCallback(async () => {
     if (!isAssetsReady) return;
 
-    // Resume AudioContext (required after user gesture)
-    await resumeAudio();
+    // 1. Resume Context immediately on user click
+    const ctx = audioCtxRef.current;
+    if (ctx && (ctx.state === "suspended" || ctx.state === "interrupted")) {
+      await ctx.resume();
+    }
+
+    // 2. Play intro music immediately inside the same click handler
+    playTrack("intro");
 
     setStatus(GameStatus.MENU);
-    playTrack("intro");
-  }, [isAssetsReady, playTrack, resumeAudio]);
+  }, [isAssetsReady, playTrack]);
 
   // Effect to switch music based on state (except Playing, which is handled in startGame)
   useEffect(() => {
     if (!audioCtxRef.current) return;
 
-    if (status === GameStatus.MENU) {
-      playTrack("intro");
-    } else if (
-      status === GameStatus.RESULT ||
-      status === GameStatus.ANALYZING
-    ) {
+    // Removed GameStatus.MENU auto-play to prevent redundant triggers
+    // we now trigger it manually in handleEnterStudio and startGame
+    if (status === GameStatus.RESULT || status === GameStatus.ANALYZING) {
       playTrack("score");
     }
   }, [status, playTrack]);
