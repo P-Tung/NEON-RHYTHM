@@ -12,6 +12,13 @@ import { DIFFICULTIES, Difficulty, GameStatus, RobotState, GeminiResponse } from
 import { RotateCcw, Volume2, VolumeX } from 'lucide-react';
 import { MUSIC_INTRO_URL, MUSIC_GAME_URL, MUSIC_SCORE_URL, BASE_BPM, AUDIO_OFFSET_MS, FIRST_BEAT_TIME_SEC } from './constants';
 
+// Initialize AI outside component to avoid re-instantiation memory overhead
+let genAIInstance: GoogleGenAI | null = null;
+const getAI = (apiKey: string) => {
+    if (!genAIInstance) genAIInstance = new GoogleGenAI({ apiKey });
+    return genAIInstance;
+};
+
 const App: React.FC = () => {
     // Hardware Refs
     const videoRef = useRef<HTMLVideoElement>(null);
@@ -25,14 +32,17 @@ const App: React.FC = () => {
     const currentSourceRef = useRef<AudioBufferSourceNode | null>(null);
     const currentGainRef = useRef<GainNode | null>(null);
     
+    // Memory & Timer Management
+    const gameTimersRef = useRef<(number | NodeJS.Timeout)[]>([]);
+    
     // Tracking
     const { isCameraReady, fingerCount, landmarksRef } = useMediaPipe(videoRef);
     
+    // Ref to track if target was hit at any point during the beat (Mobile optimization)
+    const hasHitCurrentBeatRef = useRef(false);
+    
     // Ref to track finger count inside intervals/closures
     const fingerCountRef = useRef(0);
-    useEffect(() => {
-        fingerCountRef.current = fingerCount;
-    }, [fingerCount]);
 
     // Game State
     const [status, setStatus] = useState<GameStatus>(GameStatus.LOADING);
@@ -52,6 +62,36 @@ const App: React.FC = () => {
     // Analysis Results (Gemini)
     const [robotState, setRobotState] = useState<RobotState>('average');
     const [resultData, setResultData] = useState<GeminiResponse | null>(null);
+
+    // Memory Cleanup: Clear all temp data, timers and frames
+    const cleanupTempData = useCallback(() => {
+        // Clear all ghost loops and timers
+        gameTimersRef.current.forEach(id => {
+            if (id) {
+                clearInterval(id as any);
+                clearTimeout(id as any);
+            }
+        });
+        gameTimersRef.current = [];
+        
+        // Reset heavy state
+        setCapturedFrames([]);
+        setLocalResults([]);
+        setCurrentBeat(-1);
+        hasHitCurrentBeatRef.current = false;
+    }, []);
+
+    // Sync finger count ref and check for hits
+    useEffect(() => {
+        fingerCountRef.current = fingerCount;
+        
+        // If we are playing, check if this new count matches the current target
+        if (status === GameStatus.PLAYING && currentBeat >= 0 && currentBeat < sequence.length) {
+            if (fingerCount === sequence[currentBeat]) {
+                hasHitCurrentBeatRef.current = true;
+            }
+        }
+    }, [fingerCount, status, currentBeat, sequence]);
 
     // Generate random sequence based on difficulty
     const generateSequence = useCallback((diff: Difficulty) => {
@@ -227,6 +267,12 @@ const App: React.FC = () => {
         
         osc.start();
         osc.stop(ctx.currentTime + 0.1);
+
+        // Disconnect nodes to free memory after sound ends
+        setTimeout(() => {
+            osc.disconnect();
+            gain.disconnect();
+        }, 200);
     }, []);
 
     // Metronome sound: Matches index copy.html rhythm engine (always plays, not affected by mute)
@@ -252,6 +298,12 @@ const App: React.FC = () => {
         
         osc.start(ctx.currentTime);
         osc.stop(ctx.currentTime + 0.05);
+
+        // Disconnect nodes to free memory
+        setTimeout(() => {
+            osc.disconnect();
+            envelope.disconnect();
+        }, 100);
     }, []);
 
     // Success: Pleasant major chord chime
@@ -275,6 +327,12 @@ const App: React.FC = () => {
             gain.connect(ctx.destination);
             osc.start();
             osc.stop(now + 0.5);
+
+            // Cleanup
+            setTimeout(() => {
+                osc.disconnect();
+                gain.disconnect();
+            }, 600);
         });
     }, [isMuted]);
 
@@ -298,10 +356,18 @@ const App: React.FC = () => {
         gain.connect(ctx.destination);
         osc.start();
         osc.stop(now + 0.3);
+
+        // Cleanup
+        setTimeout(() => {
+            osc.disconnect();
+            gain.disconnect();
+        }, 400);
     }, [isMuted]);
 
     // --- GAME LOOP ---
     const startGame = async () => {
+        cleanupTempData(); // Clear memory/timers from previous rounds
+        
         const newSequence = generateSequence(difficulty);
         setSequence(newSequence);
         setLocalResults(new Array(newSequence.length).fill(null));
@@ -310,6 +376,7 @@ const App: React.FC = () => {
         setStatus(GameStatus.PLAYING);
         setRobotState('average');
         setCurrentBeat(-1);
+        hasHitCurrentBeatRef.current = false;
         
         // Calculate timing based on difficulty's playback rate
         const targetBPM = DIFFICULTIES[difficulty].bpm;
@@ -331,9 +398,10 @@ const App: React.FC = () => {
             
             // Wait for the difference, then start countdown
             const waitTime = (timeToFirstBeat - countdownDuration) * 1000;
-            setTimeout(() => {
+            const timerId = setTimeout(() => {
                 startCountdown(newSequence);
             }, waitTime);
+            gameTimersRef.current.push(timerId);
         } else {
             // First beat comes before countdown ends - skip intro
             // Start music from a point so first beat aligns with countdown end
@@ -351,7 +419,7 @@ const App: React.FC = () => {
         setCountdown(count);
         playCountdownBeep(count);
         
-        const timer = setInterval(() => {
+        const timerId = setInterval(() => {
             count--;
             setCountdown(count);
             
@@ -360,12 +428,13 @@ const App: React.FC = () => {
             }
             
             if (count === 0) {
-                clearInterval(timer);
+                clearInterval(timerId);
                 setCountdown(null);
                 // Start sequence immediately - synced with first beat!
                 runSequence(newSequence);
             }
         }, 1000);
+        gameTimersRef.current.push(timerId);
     };
 
     const runSequence = (seq: number[]) => {
@@ -376,32 +445,35 @@ const App: React.FC = () => {
         const frames: string[] = [];
         const results: (boolean | null)[] = new Array(seq.length).fill(null);
 
+        // Pre-set canvas size for optimized capture (Low res is enough for AI)
+        if (canvasRef.current) {
+            canvasRef.current.width = 320;
+            canvasRef.current.height = 240;
+        }
+
         // Start the beat loop after audio offset for perfect sync
         const startBeatLoop = () => {
             // Show first beat immediately when sequence starts
             setCurrentBeat(0);
 
             // Use consistent interval from the start - first callback happens after one interval
-            const loop = setInterval(() => {
+            const loopId = setInterval(() => {
             // JUDGE THE PREVIOUS BEAT (The one we just finished showing)
             if (beat >= 0 && beat < seq.length) {
-                // Capture Frame for Analysis
+                // ... (frame capture remains same) ...
                 if (videoRef.current && canvasRef.current) {
                     const canvas = canvasRef.current;
                     const video = videoRef.current;
-                    canvas.width = video.videoWidth;
-                    canvas.height = video.videoHeight;
                     const ctx = canvas.getContext('2d');
                     if (ctx) {
-                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                        frames.push(canvas.toDataURL('image/jpeg', 0.6));
+                        // Draw at the fixed small size to save memory and CPU
+                        ctx.drawImage(video, 0, 0, 320, 240);
+                        frames.push(canvas.toDataURL('image/jpeg', 0.5)); // 50% quality is plenty
                     }
                 }
 
-                // Immediate Local Judgment
-                const detected = fingerCountRef.current;
-                const target = seq[beat];
-                const isHit = detected === target;
+                // JUDGMENT: Use the "hasHit" flag which caught the gesture at any point in the beat
+                const isHit = hasHitCurrentBeatRef.current;
                 results[beat] = isHit;
                 setLocalResults([...results]); // Update UI
 
@@ -411,10 +483,11 @@ const App: React.FC = () => {
 
             // Increment to next beat
             beat++;
+            hasHitCurrentBeatRef.current = false; // Reset for the new beat
 
             // Check if we've shown all beats
             if (beat >= seq.length) {
-                clearInterval(loop);
+                clearInterval(loopId);
                 // Last beat was already judged and captured in the loop above
                 // Music transition handled by state change to ANALYZING/RESULT
                 setCapturedFrames(frames);
@@ -425,11 +498,13 @@ const App: React.FC = () => {
             // Show current beat
             setCurrentBeat(beat);
             }, interval);
+            gameTimersRef.current.push(loopId);
         };
 
         // Apply audio offset for sync - if 0, start immediately
         if (AUDIO_OFFSET_MS > 0) {
-            setTimeout(startBeatLoop, AUDIO_OFFSET_MS);
+            const timerId = setTimeout(startBeatLoop, AUDIO_OFFSET_MS);
+            gameTimersRef.current.push(timerId);
         } else {
             startBeatLoop();
         }
@@ -445,7 +520,8 @@ const App: React.FC = () => {
         const localScore = Math.round((localCorrectCount / seq.length) * 100);
 
         try {
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            // Reuse persistent AI instance
+            const ai = getAI(process.env.API_KEY || "");
             
             // Prepare image parts
             const imageParts = frames.map(dataUrl => ({
@@ -478,13 +554,15 @@ const App: React.FC = () => {
             `;
 
             const response = await ai.models.generateContent({
-                model: 'gemini-2.5-flash',
-                contents: {
-                    parts: [
-                        { text: prompt },
-                        ...imageParts
-                    ]
-                },
+                model: 'gemini-2.0-flash',
+                contents: [
+                    {
+                        parts: [
+                            { text: prompt },
+                            ...imageParts
+                        ]
+                    }
+                ],
                 config: {
                     responseMimeType: "application/json"
                 }

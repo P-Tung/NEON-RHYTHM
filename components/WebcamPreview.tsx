@@ -75,8 +75,9 @@ const WebcamPreview: React.FC<WebcamPreviewProps> = ({ videoRef, landmarksRef, i
                         ctx.strokeStyle = '#00f3ff'; // Neon Cyan
                         ctx.lineWidth = 4;
                         ctx.lineCap = 'round';
-                        ctx.shadowColor = '#00f3ff';
-                        ctx.shadowBlur = 10;
+                        // Removed expensive shadowBlur to prevent GPU thermal throttling
+                        // ctx.shadowColor = '#00f3ff';
+                        // ctx.shadowBlur = 10;
 
                         const getCoords = (lm: NormalizedLandmark) => {
                             // Mirror X: (1 - x)

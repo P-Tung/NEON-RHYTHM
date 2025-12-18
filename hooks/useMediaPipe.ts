@@ -14,8 +14,44 @@ export const useMediaPipe = (videoRef: React.RefObject<HTMLVideoElement | null>)
   const landmarkerRef = useRef<HandLandmarker | null>(null);
   const requestRef = useRef<number>(0);
   const landmarksRef = useRef<NormalizedLandmark[] | null>(null);
+  const lastDetectionTimeRef = useRef<number>(0);
+  
+  // Detect mobile for optimizations
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+  const DETECTION_INTERVAL = isMobile ? 66 : 0; // ~15 FPS detection on mobile is enough for rhythm, saves CPU
+  
+  // Temporal smoothing: store recent finger counts
+  const fingerHistoryRef = useRef<number[]>([]);
+  const HISTORY_SIZE = isMobile ? 3 : 5; // Smaller history for faster response on mobile
 
-  // Helper: Count extended fingers with robust geometric heuristics
+  // Get MODE (most frequent value) from array
+  const getMode = (arr: number[]): number => {
+    const freq: Record<number, number> = {};
+    let maxFreq = 0;
+    let mode = arr[0];
+    for (const n of arr) {
+      freq[n] = (freq[n] || 0) + 1;
+      if (freq[n] > maxFreq) {
+        maxFreq = freq[n];
+        mode = n;
+      }
+    }
+    return mode;
+  };
+
+  // Helper: Calculate angle at point B given points A, B, C (in degrees)
+  const getAngle = (a: NormalizedLandmark, b: NormalizedLandmark, c: NormalizedLandmark): number => {
+    const ab = { x: a.x - b.x, y: a.y - b.y };
+    const cb = { x: c.x - b.x, y: c.y - b.y };
+    const dot = ab.x * cb.x + ab.y * cb.y;
+    const magAB = Math.hypot(ab.x, ab.y);
+    const magCB = Math.hypot(cb.x, cb.y);
+    if (magAB === 0 || magCB === 0) return 180; // Avoid division by zero
+    const cosAngle = Math.max(-1, Math.min(1, dot / (magAB * magCB))); // Clamp to [-1, 1]
+    return Math.acos(cosAngle) * (180 / Math.PI);
+  };
+
+  // Helper: Count extended fingers using HYBRID detection (angle + distance)
   const countFingers = (landmarks: NormalizedLandmark[]): number => {
       if (!landmarks || landmarks.length < 21) return 0;
       
@@ -32,45 +68,47 @@ export const useMediaPipe = (videoRef: React.RefObject<HTMLVideoElement | null>)
       const thumbIP = landmarks[3];
       const thumbTip = landmarks[4];
       
-      // 1. Linearity Check: Is the thumb straight? 
-      // Compare direct distance (MCP->Tip) vs sum of segments (MCP->IP + IP->Tip)
+      // Linearity check for thumb
       const distMCP_IP = Math.hypot(thumbIP.x - thumbMCP.x, thumbIP.y - thumbMCP.y);
       const distIP_Tip = Math.hypot(thumbTip.x - thumbIP.x, thumbTip.y - thumbIP.y);
       const distMCP_Tip = Math.hypot(thumbTip.x - thumbMCP.x, thumbTip.y - thumbMCP.y);
-      
       const linearity = distMCP_Tip / (distMCP_IP + distIP_Tip);
-
-      // 2. Abduction Check: Is the thumb away from the Index finger?
-      // Distance from Thumb Tip to Index MCP. In a fist/tucked pose, this is small.
+      
+      // Abduction check (thumb away from palm)
       const distTip_IndexMCP = Math.hypot(thumbTip.x - indexMCP.x, thumbTip.y - indexMCP.y);
       
-      // Heuristic: Thumb is extended if it's mostly straight AND far enough from the index knuckle
-      // 0.9 linearity allows for slight curve. 0.5 * scale ensures it's not tucked against palm.
+      // Thumb is extended if: mostly straight AND far from index knuckle
       if (linearity > 0.85 && distTip_IndexMCP > scale * 0.5) {
           count++;
       }
 
       // --- FINGERS (Index, Middle, Ring, Pinky) ---
-      // Robust rotation-invariant check:
-      // An extended finger's Tip is significantly further from the Wrist than its PIP (knuckle).
-      // A curled finger's Tip is closer to the Wrist than its PIP (or roughly same).
+      // HYBRID: Both angle AND distance must pass
       
       const fingers = [
-          { name: 'index', tip: 8, pip: 6 },
-          { name: 'middle', tip: 12, pip: 10 },
-          { name: 'ring', tip: 16, pip: 14 },
-          { name: 'pinky', tip: 20, pip: 18 }
+          { name: 'index', mcp: 5, pip: 6, tip: 8 },
+          { name: 'middle', mcp: 9, pip: 10, tip: 12 },
+          { name: 'ring', mcp: 13, pip: 14, tip: 16 },
+          { name: 'pinky', mcp: 17, pip: 18, tip: 20 }
       ];
 
       for (const f of fingers) {
-          const tip = landmarks[f.tip];
+          const mcp = landmarks[f.mcp];
           const pip = landmarks[f.pip];
+          const tip = landmarks[f.tip];
           
+          // CHECK 1: Angle at PIP joint (must be > 160° for extended)
+          const pipAngle = getAngle(mcp, pip, tip);
+          
+          // CHECK 2: Tip must be further from wrist than MCP (extended = tip is out)
           const distWristTip = Math.hypot(tip.x - wrist.x, tip.y - wrist.y);
-          const distWristPIP = Math.hypot(pip.x - wrist.x, pip.y - wrist.y);
+          const distWristMCP = Math.hypot(mcp.x - wrist.x, mcp.y - wrist.y);
           
-          // Check: Tip distance > PIP distance + buffer (to prevent flicker)
-          if (distWristTip > distWristPIP + (scale * 0.15)) {
+          // BOTH conditions must be true
+          const isAngleStraight = pipAngle > 160;
+          const isTipExtended = distWristTip > distWristMCP * 1.2; // Tip 20% further than MCP
+          
+          if (isAngleStraight && isTipExtended) {
               count++;
           }
       }
@@ -96,9 +134,9 @@ export const useMediaPipe = (videoRef: React.RefObject<HTMLVideoElement | null>)
           },
           runningMode: "VIDEO",
           numHands: 1,
-          minHandDetectionConfidence: 0.5,
-          minHandPresenceConfidence: 0.5,
-          minTrackingConfidence: 0.5
+          minHandDetectionConfidence: 0.7,
+          minHandPresenceConfidence: 0.7,
+          minTrackingConfidence: 0.7
         });
 
         if (!isActive) {
@@ -119,8 +157,8 @@ export const useMediaPipe = (videoRef: React.RefObject<HTMLVideoElement | null>)
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: 'user',
-            width: { ideal: 1280 },
-            height: { ideal: 720 }
+            width: { ideal: isMobile ? 480 : 1280 },
+            height: { ideal: isMobile ? 360 : 720 }
           }
         });
 
@@ -145,6 +183,14 @@ export const useMediaPipe = (videoRef: React.RefObject<HTMLVideoElement | null>)
         const video = videoRef.current;
         if (video.videoWidth > 0 && video.videoHeight > 0) {
              const startTimeMs = performance.now();
+             
+             // Throttle detection on mobile to save battery and reduce heat
+             if (isMobile && startTimeMs - lastDetectionTimeRef.current < DETECTION_INTERVAL) {
+                requestRef.current = requestAnimationFrame(predictWebcam);
+                return;
+             }
+             lastDetectionTimeRef.current = startTimeMs;
+
              try {
                  const results = landmarkerRef.current.detectForVideo(video, startTimeMs);
                  
@@ -152,10 +198,24 @@ export const useMediaPipe = (videoRef: React.RefObject<HTMLVideoElement | null>)
                      const lm = results.landmarks[0];
                      landmarksRef.current = lm;
                      const count = countFingers(lm);
+                     
+                     // Add to history buffer for temporal smoothing
+                     fingerHistoryRef.current.push(count);
+                     if (fingerHistoryRef.current.length > HISTORY_SIZE) {
+                       fingerHistoryRef.current.shift();
+                     }
+                     
+                     // Use MODE (most frequent value) for stability
+                     const smoothedCount = fingerHistoryRef.current.length >= 3 
+                       ? getMode(fingerHistoryRef.current) 
+                       : count;
+                     
                      // Only update state if number changes to avoid re-renders
-                     setFingerCount(prev => prev === count ? prev : count);
+                     setFingerCount(prev => prev === smoothedCount ? prev : smoothedCount);
                  } else {
                      landmarksRef.current = null;
+                     // Clear history when no hand detected
+                     fingerHistoryRef.current = [];
                      setFingerCount(0);
                  }
              } catch (e) {
