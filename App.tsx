@@ -64,6 +64,7 @@ const App: React.FC = () => {
   const [currentBeat, setCurrentBeat] = useState(-1);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [capturedFrames, setCapturedFrames] = useState<string[]>([]);
+  const [judgementMode, setJudgementMode] = useState<"LOCAL" | "AI">("AI");
   const [isMuted, setIsMuted] = useState(false);
 
   // Loading State
@@ -586,6 +587,21 @@ const App: React.FC = () => {
     const localCorrectCount = localResults.filter((r) => r === true).length;
     const localScore = Math.round((localCorrectCount / seq.length) * 100);
 
+    // If LOCAL mode is selected, skip AI analysis and show results immediately
+    if (judgementMode === "LOCAL") {
+      setRobotState(localScore > 60 ? "happy" : "sad");
+      setResultData({
+        success: localScore > 60,
+        correct_count: localCorrectCount,
+        score: localScore,
+        feedback: "Local Tracking complete. Ultra-fast feedback active!",
+        detailed_results: localResults.map((r) => r === true),
+        detected_counts: new Array(frames.length).fill(0), // Placeholder for UI
+      });
+      setStatus(GameStatus.RESULT);
+      return;
+    }
+
     try {
       // Reuse persistent AI instance
       const ai = getAI(process.env.API_KEY || "");
@@ -782,6 +798,30 @@ const App: React.FC = () => {
                 {DIFFICULTIES[difficulty].length} ROUNDS •{" "}
                 {DIFFICULTIES[difficulty].bpm} BPM
               </p>
+            </div>
+
+            {/* Judgement Mode Toggle */}
+            <div className="flex bg-black/40 p-1 rounded-full border border-white/10 w-full max-w-[280px]">
+              <button
+                onClick={() => setJudgementMode("LOCAL")}
+                className={`flex-1 py-2 px-4 rounded-full text-[10px] font-black tracking-widest uppercase transition-all ${
+                  judgementMode === "LOCAL"
+                    ? "bg-white/10 text-[#00f3ff] shadow-[0_0_15px_rgba(0,243,255,0.2)]"
+                    : "text-white/30 hover:text-white/60"
+                }`}
+              >
+                Local Tracking
+              </button>
+              <button
+                onClick={() => setJudgementMode("AI")}
+                className={`flex-1 py-2 px-4 rounded-full text-[10px] font-black tracking-widest uppercase transition-all ${
+                  judgementMode === "AI"
+                    ? "bg-white/10 text-[#ff00ff] shadow-[0_0_15px_rgba(255,0,255,0.2)]"
+                    : "text-white/30 hover:text-white/60"
+                }`}
+              >
+                AI Judge
+              </button>
             </div>
 
             {!isCameraReady ? (
