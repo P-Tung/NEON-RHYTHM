@@ -49,20 +49,32 @@ export const useMediaPipe = (
   // Helper: Calculate 3D distance between two landmarks
   const getDistance3D = (
     a: NormalizedLandmark,
-    b: NormalizedLandmark
+    b: NormalizedLandmark,
+    ratio: number = 1
   ): number => {
-    return Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
+    // Standardize coordinates by multiplying X and Z by the aspect ratio (W/H)
+    // This makes the distance metric consistent in "height units"
+    return Math.hypot((a.x - b.x) * ratio, a.y - b.y, (a.z - b.z) * ratio);
   };
 
   // Helper: Calculate angle at point B given points A, B, C (in degrees) using 3D coordinates
   const getAngle = (
     a: NormalizedLandmark,
     b: NormalizedLandmark,
-    c: NormalizedLandmark
+    c: NormalizedLandmark,
+    ratio: number = 1
   ): number => {
-    // Vectors AB and CB
-    const ab = { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z };
-    const cb = { x: c.x - b.x, y: c.y - b.y, z: c.z - b.z };
+    // Vectors AB and CB in standardized coordinates
+    const ab = {
+      x: (a.x - b.x) * ratio,
+      y: a.y - b.y,
+      z: (a.z - b.z) * ratio,
+    };
+    const cb = {
+      x: (c.x - b.x) * ratio,
+      y: c.y - b.y,
+      z: (c.z - b.z) * ratio,
+    };
 
     // Dot product in 3D
     const dot = ab.x * cb.x + ab.y * cb.y + ab.z * cb.z;
@@ -78,61 +90,53 @@ export const useMediaPipe = (
   };
 
   // Helper: Count extended fingers using Robust Relative Distances (Rotation Invariant)
-  const countFingers = (landmarks: NormalizedLandmark[]): number => {
+  const countFingers = (
+    landmarks: NormalizedLandmark[],
+    ratio: number
+  ): number => {
     if (!landmarks || landmarks.length < 21) return 0;
 
     const wrist = landmarks[0];
-    const indexMCP = landmarks[5];
+    const PinkyMCP = landmarks[17];
     let count = 0;
 
-    // --- THUMB (Points 1, 2, 3, 4) ---
-    const thumbMCP = landmarks[2];
+    // --- THUMB (Points 2, 3, 4) ---
+    // LOGIC: Is the thumb tip further from the pinky knuckle than the base joint?
+    // This is the most robust way to detect a "tucked" thumb.
     const thumbIP = landmarks[3];
     const thumbTip = landmarks[4];
 
-    // 1. Angle Check: Thumb must be relatively straight
-    const thumbAngle = getAngle(thumbMCP, thumbIP, thumbTip);
+    const distTipToPinky = getDistance3D(thumbTip, PinkyMCP, ratio);
+    const distIpToPinky = getDistance3D(thumbIP, PinkyMCP, ratio);
 
-    // 2. Wide Check: Thumb Tip must be further from Index-MCP than the IP joint is
-    const distTipToIndex = getDistance3D(thumbTip, indexMCP);
-    const distIpToIndex = getDistance3D(thumbIP, indexMCP);
-
-    const isThumbStraight = thumbAngle > 150;
-    const isThumbOut = distTipToIndex > distIpToIndex * 1.2;
-
-    if (isThumbStraight && isThumbOut) {
-      count++;
+    // If tip is significantly further from pinky than the inner joint, it's "out"
+    if (distTipToPinky > distIpToPinky * 1.1) {
+      // Also check if it's not tucked deep into the palm
+      const distTipToWrist = getDistance3D(thumbTip, wrist, ratio);
+      const distMcpToWrist = getDistance3D(landmarks[2], wrist, ratio);
+      if (distTipToWrist > distMcpToWrist * 0.8) {
+        count++;
+      }
     }
 
     // --- FINGERS (Index, Middle, Ring, Pinky) ---
     const fingers = [
-      { name: "index", mcp: 5, pip: 6, tip: 8 },
-      { name: "middle", mcp: 9, pip: 10, tip: 12 },
-      { name: "ring", mcp: 13, pip: 14, tip: 16 },
-      { name: "pinky", mcp: 17, pip: 18, tip: 20 },
+      { mcp: 5, tip: 8 }, // Index
+      { mcp: 9, tip: 12 }, // Middle
+      { mcp: 13, tip: 16 }, // Ring
+      { mcp: 17, tip: 20 }, // Pinky
     ];
 
     for (const f of fingers) {
       const mcp = landmarks[f.mcp];
-      const pip = landmarks[f.pip];
       const tip = landmarks[f.tip];
 
-      // ROBUST CHECK: Is the Tip further from the Wrist than the PIP joint?
-      const distWristTip = getDistance3D(wrist, tip);
-      const distWristPip = getDistance3D(wrist, pip);
-      const distWristMcp = getDistance3D(wrist, mcp);
+      const distWristTip = getDistance3D(wrist, tip, ratio);
+      const distWristMcp = getDistance3D(wrist, mcp, ratio);
 
-      // 1. Tip must be further than PIP (Principal Check)
-      const isTipExtended = distWristTip > distWristPip;
-
-      // 2. Tip must also be significantly further than MCP
-      const isTipFarFromPalm = distWristTip > distWristMcp * 1.3;
-
-      // 3. Angle Check (Secondary to filter noise)
-      const angle = getAngle(mcp, pip, tip);
-      const isStraight = angle > 100;
-
-      if (isTipExtended && isTipFarFromPalm && isStraight) {
+      // LOGIC: Is the tip significantly "out" from the knuckle?
+      // 1.35x distance is a safe "out of the fist" threshold
+      if (distWristTip > distWristMcp * 1.35) {
         count++;
       }
     }
@@ -225,9 +229,10 @@ export const useMediaPipe = (
           );
 
           if (results.landmarks && results.landmarks.length > 0) {
+            const ratio = video.videoWidth / video.videoHeight;
             const lm = results.landmarks[0];
             landmarksRef.current = lm;
-            const count = countFingers(lm);
+            const count = countFingers(lm, ratio);
 
             // Add to history buffer for temporal smoothing
             fingerHistoryRef.current.push(count);
