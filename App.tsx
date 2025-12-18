@@ -136,29 +136,60 @@ const App: React.FC = () => {
   };
 
   const initAudio = useCallback(async () => {
-    if (!audioCtxRef.current) {
-      audioCtxRef.current = new (window.AudioContext ||
-        (window as any).webkitAudioContext)();
+    try {
+      if (!audioCtxRef.current) {
+        const AudioContextClass =
+          window.AudioContext || (window as any).webkitAudioContext;
+        if (AudioContextClass) {
+          audioCtxRef.current = new AudioContextClass();
+        }
+      }
+
+      const ctx = audioCtxRef.current;
+      if (!ctx) return;
+
+      // Load all tracks in parallel
+      const [intro, game, score] = await Promise.all([
+        introBufferRef.current
+          ? Promise.resolve(introBufferRef.current)
+          : loadAudioBuffer(MUSIC_INTRO_URL, ctx),
+        gameBufferRef.current
+          ? Promise.resolve(gameBufferRef.current)
+          : loadAudioBuffer(MUSIC_GAME_URL, ctx),
+        scoreBufferRef.current
+          ? Promise.resolve(scoreBufferRef.current)
+          : loadAudioBuffer(MUSIC_SCORE_URL, ctx),
+      ]);
+
+      introBufferRef.current = intro;
+      gameBufferRef.current = game;
+      scoreBufferRef.current = score;
+    } catch (error) {
+      console.error("Audio initialization failed:", error);
     }
-    const ctx = audioCtxRef.current;
-
-    // Load all tracks in parallel
-    const [intro, game, score] = await Promise.all([
-      introBufferRef.current
-        ? Promise.resolve(introBufferRef.current)
-        : loadAudioBuffer(MUSIC_INTRO_URL, ctx),
-      gameBufferRef.current
-        ? Promise.resolve(gameBufferRef.current)
-        : loadAudioBuffer(MUSIC_GAME_URL, ctx),
-      scoreBufferRef.current
-        ? Promise.resolve(scoreBufferRef.current)
-        : loadAudioBuffer(MUSIC_SCORE_URL, ctx),
-    ]);
-
-    introBufferRef.current = intro;
-    gameBufferRef.current = game;
-    scoreBufferRef.current = score;
   }, []);
+
+  // Helper to resume audio context - CRITICAL for iOS
+  const resumeAudio = useCallback(async () => {
+    if (!audioCtxRef.current) {
+      await initAudio();
+    }
+
+    const ctx = audioCtxRef.current;
+    if (ctx) {
+      if (ctx.state === "suspended" || ctx.state === "interrupted") {
+        await ctx.resume();
+      }
+
+      // iOS "Silent Mode" & "User Gesture" Unlock:
+      // Play a tiny silent buffer to kickstart the hardware
+      const buffer = ctx.createBuffer(1, 1, 22050);
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(ctx.destination);
+      source.start(0);
+    }
+  }, [initAudio]);
 
   // Start loading assets immediately on mount
   useEffect(() => {
@@ -173,7 +204,13 @@ const App: React.FC = () => {
   // startOffset: time in seconds to start playback from (for skipping intros)
   const playTrack = useCallback(
     (type: "intro" | "game" | "score", startOffset: number = 0) => {
-      if (!audioCtxRef.current) return;
+      const ctx = audioCtxRef.current;
+      if (!ctx) return;
+
+      // Ensure context is running (can be suspended by system/phone calls)
+      if (ctx.state === "suspended") {
+        ctx.resume();
+      }
 
       // Stop currently playing track
       if (currentSourceRef.current) {
@@ -183,7 +220,6 @@ const App: React.FC = () => {
         currentSourceRef.current = null;
       }
 
-      const ctx = audioCtxRef.current;
       let buffer: AudioBuffer | null = null;
       let volume = 0.5;
       let loop = true;
@@ -244,17 +280,15 @@ const App: React.FC = () => {
   }, []);
 
   // Handle "Enter Studio" button click
-  const handleEnterStudio = useCallback(() => {
+  const handleEnterStudio = useCallback(async () => {
     if (!isAssetsReady) return;
 
     // Resume AudioContext (required after user gesture)
-    if (audioCtxRef.current?.state === "suspended") {
-      audioCtxRef.current.resume();
-    }
+    await resumeAudio();
 
     setStatus(GameStatus.MENU);
     playTrack("intro");
-  }, [isAssetsReady, playTrack]);
+  }, [isAssetsReady, playTrack, resumeAudio]);
 
   // Effect to switch music based on state (except Playing, which is handled in startGame)
   useEffect(() => {
