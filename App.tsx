@@ -81,6 +81,12 @@ const App: React.FC = () => {
   // Real-time Results
   const [localResults, setLocalResults] = useState<(boolean | null)[]>([]);
 
+  // Infinite Mode State
+  const [isInfiniteMode, setIsInfiniteMode] = useState(true);
+  const [currentRound, setCurrentRound] = useState(1);
+  const [currentBpm, setCurrentBpm] = useState(100);
+  const [currentLength, setCurrentLength] = useState(5);
+
   // Analysis Results (Gemini)
   const [robotState, setRobotState] = useState<RobotState>("average");
   const [resultData, setResultData] = useState<GeminiResponse | null>(null);
@@ -125,14 +131,15 @@ const App: React.FC = () => {
     }
   }, [fingerCount, status, currentBeat, sequence]);
 
-  // Generate random sequence based on difficulty
-  const generateSequence = useCallback((diff: Difficulty) => {
-    const config = DIFFICULTIES[diff];
-    return Array.from(
-      { length: config.length },
-      () => Math.floor(Math.random() * 5) + 1
-    );
-  }, []);
+  // Generate random sequence based on difficulty or infinite stats
+  const generateSequence = useCallback(
+    (diff: Difficulty, lengthOverride?: number) => {
+      const config = DIFFICULTIES[diff];
+      const length = lengthOverride || config.length;
+      return Array.from({ length }, () => Math.floor(Math.random() * 5) + 1);
+    },
+    []
+  );
 
   // --- AUDIO SYSTEM ---
   const loadAudioBuffer = async (
@@ -244,7 +251,9 @@ const App: React.FC = () => {
         case "game":
           buffer = gameBufferRef.current;
           volume = 0.5;
-          const targetBPM = DIFFICULTIES[difficulty].bpm;
+          const targetBPM = isInfiniteMode
+            ? currentBpm
+            : DIFFICULTIES[difficulty].bpm;
           playbackRate = targetBPM / BASE_BPM;
           offset = startOffset / playbackRate;
           break;
@@ -451,11 +460,18 @@ const App: React.FC = () => {
   }, [isMuted]);
 
   // --- GAME LOOP ---
-  const startGame = async (forcedDifficulty?: Difficulty) => {
+  const startGame = async (
+    forcedDifficulty?: Difficulty,
+    bpmOverride?: number,
+    lengthOverride?: number
+  ) => {
     cleanupTempData(); // Clear memory/timers from previous rounds
 
     const targetDifficulty = forcedDifficulty || difficulty;
-    const newSequence = generateSequence(targetDifficulty);
+    const length =
+      lengthOverride ||
+      (isInfiniteMode ? currentLength : DIFFICULTIES[targetDifficulty].length);
+    const newSequence = generateSequence(targetDifficulty, length);
     setSequence(newSequence);
     setLocalResults(new Array(newSequence.length).fill(null));
     setCapturedFrames([]);
@@ -471,7 +487,9 @@ const App: React.FC = () => {
     hasHitCurrentBeatRef.current = false;
 
     // Calculate timing based on difficulty's playback rate
-    const targetBPM = DIFFICULTIES[targetDifficulty].bpm;
+    const targetBPM =
+      bpmOverride ||
+      (isInfiniteMode ? currentBpm : DIFFICULTIES[targetDifficulty].bpm);
     const playbackRate = targetBPM / BASE_BPM;
 
     // Time until first beat at current playback rate
@@ -531,7 +549,7 @@ const App: React.FC = () => {
 
   const runSequence = (seq: number[]) => {
     // playMusic(); // Removed: Handled in startGame now
-    const bpm = DIFFICULTIES[difficulty].bpm;
+    const bpm = isInfiniteMode ? currentBpm : DIFFICULTIES[difficulty].bpm;
     const interval = 60000 / bpm;
     let beat = 0; // Start at 0
     const frames: string[] = [];
@@ -797,7 +815,10 @@ const App: React.FC = () => {
   };
 
   // --- RENDER ---
-  const beatDuration = 60 / DIFFICULTIES[difficulty].bpm; // in seconds
+  const currentBpmForCalc = isInfiniteMode
+    ? currentBpm
+    : DIFFICULTIES[difficulty].bpm;
+  const beatDuration = 60 / currentBpmForCalc; // in seconds
 
   return (
     <div className="relative w-full h-screen bg-[#050510] overflow-hidden text-white font-sans selection:bg-[#ff00ff]">
@@ -907,15 +928,29 @@ const App: React.FC = () => {
                 Initializing Camera...
               </div>
             ) : (
-              <button
-                onClick={() => {
-                  setDifficulty("EASY");
-                  startGame("EASY");
-                }}
-                className="group relative px-12 py-5 rounded-full bg-white text-black font-black text-2xl tracking-widest active:scale-95 transition-transform shadow-[0_4px_10px_rgba(0,0,0,0.5)]"
-              >
-                START
-              </button>
+              <div className="flex flex-col items-center gap-6">
+                <div className="flex flex-col items-center text-center">
+                  <h2 className="text-xl md:text-2xl font-black text-white/60 tracking-widest uppercase mb-1">
+                    Mode
+                  </h2>
+                  <div className="text-3xl md:text-4xl font-black text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]">
+                    INFINITE SURVIVAL
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => {
+                    setIsInfiniteMode(true);
+                    setCurrentRound(1);
+                    setCurrentBpm(100);
+                    setCurrentLength(5);
+                    startGame();
+                  }}
+                  className="group relative px-12 py-5 rounded-full bg-white text-black font-black text-2xl tracking-widest active:scale-95 transition-transform shadow-[0_4px_10px_rgba(0,0,0,0.5)]"
+                >
+                  START INFINITE
+                </button>
+              </div>
             )}
           </div>
         )}
@@ -923,19 +958,22 @@ const App: React.FC = () => {
         {/* --- PLAYING STATE --- */}
         {(status === GameStatus.PLAYING || status === GameStatus.ANALYZING) && (
           <div className="w-full h-full flex flex-col justify-between py-6 md:py-12">
-            {/* Simple Status (Optional) */}
-            <div className="absolute top-4 right-20 md:right-24">
-              <div className="px-3 py-1 flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-red-600 animate-pulse" />
-                <span className="text-[10px] font-bold text-white drop-shadow-[0_1px_1px_rgba(0,0,0,1)]">
-                  REC
+            {/* Top Center Round Info */}
+            <div className="absolute top-8 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center pointer-events-none w-full opacity-50">
+              <div className="text-4xl md:text-6xl font-black text-white drop-shadow-[0_4px_10px_rgba(0,0,0,0.8)] uppercase tracking-tighter animate-pop">
+                ROUND {currentRound}
+              </div>
+              <div className="flex items-center gap-3 mt-1.5 px-3 py-1 bg-black/40 backdrop-blur-md rounded-full border border-white/10 shadow-lg">
+                <div className="w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse" />
+                <span className="text-[10px] md:text-xs font-black text-white/70 uppercase tracking-[0.2em]">
+                  {currentBpm} BPM | {sequence.length} BEATS
                 </span>
               </div>
             </div>
 
             {/* Top Center Countdown */}
             {countdown !== null && (
-              <div className="absolute top-[10%] left-1/2 -translate-x-1/2 z-50 pointer-events-none">
+              <div className="absolute top-[18%] left-1/2 -translate-x-1/2 z-50 pointer-events-none">
                 <div className="text-[12rem] md:text-[22rem] font-black text-white drop-shadow-[0_10px_30px_rgba(0,0,0,0.8)] animate-pulse">
                   {countdown}
                 </div>
@@ -1006,13 +1044,18 @@ const App: React.FC = () => {
                 aiResults.filter((r) => r === null).length === 0;
 
               return (
-                <h1
-                  className={`text-6xl md:text-8xl font-black text-white drop-shadow-[0_4px_4px_rgba(0,0,0,1)] ${
-                    !isFinished ? "animate-pulse" : ""
-                  }`}
-                >
-                  {currentCorrect} / {sequence.length}
-                </h1>
+                <div className="flex flex-col items-center">
+                  <div className="text-white/40 text-xs md:text-sm font-black uppercase tracking-widest mb-1">
+                    ROUND {currentRound} COMPLETE
+                  </div>
+                  <h1
+                    className={`text-6xl md:text-8xl font-black text-white drop-shadow-[0_4px_4px_rgba(0,0,0,1)] ${
+                      !isFinished ? "animate-pulse" : ""
+                    }`}
+                  >
+                    {currentCorrect} / {sequence.length}
+                  </h1>
+                </div>
               );
             })()}
 
@@ -1150,6 +1193,7 @@ const App: React.FC = () => {
                   aiResults.length > 0 && aiResults.every((r) => r !== null);
                 const isPerfect =
                   isFinished && currentCorrect === sequence.length;
+                const isDev = window.location.hostname === "localhost";
 
                 if (!isFinished) {
                   return (
@@ -1162,30 +1206,46 @@ const App: React.FC = () => {
                   );
                 }
 
-                if (isPerfect) {
+                if (isPerfect || isDev) {
                   return (
                     <div className="flex flex-col items-center gap-4">
-                      <button
-                        onClick={() => {
-                          const diffs = Object.keys(
-                            DIFFICULTIES
-                          ) as Difficulty[];
-                          const currentIndex = diffs.indexOf(difficulty);
-                          const nextDifficulty = diffs[currentIndex + 1];
+                      {isInfiniteMode ? (
+                        <button
+                          onClick={() => {
+                            const nextBpm = currentBpm + 5;
+                            const nextLength = currentLength + 3;
+                            setCurrentBpm(nextBpm);
+                            setCurrentLength(nextLength);
+                            setCurrentRound((r) => r + 1);
+                            startGame(undefined, nextBpm, nextLength);
+                          }}
+                          className="px-12 py-5 bg-white text-black font-black uppercase tracking-widest text-xl hover:scale-105 transition-transform shadow-[0_4px_10px_rgba(0,0,0,0.5)] rounded-lg w-full min-w-[280px]"
+                        >
+                          NEXT ROUND (R{currentRound + 1})
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            const diffs = Object.keys(
+                              DIFFICULTIES
+                            ) as Difficulty[];
+                            const currentIndex = diffs.indexOf(difficulty);
+                            const nextDifficulty = diffs[currentIndex + 1];
 
-                          if (nextDifficulty) {
-                            setDifficulty(nextDifficulty);
-                            startGame(nextDifficulty);
-                          } else {
-                            // Reset to beginning when finished
-                            setDifficulty("EASY");
-                            setStatus(GameStatus.MENU);
-                          }
-                        }}
-                        className="px-12 py-5 bg-white text-black font-black uppercase tracking-widest text-xl hover:scale-105 transition-transform shadow-[0_4px_10px_rgba(0,0,0,0.5)] rounded-lg w-full min-w-[280px]"
-                      >
-                        {difficulty === "NIGHTMARE" ? "FINISH" : "NEXT ROUND"}
-                      </button>
+                            if (nextDifficulty) {
+                              setDifficulty(nextDifficulty);
+                              startGame(nextDifficulty);
+                            } else {
+                              // Reset to beginning when finished
+                              setDifficulty("EASY");
+                              setStatus(GameStatus.MENU);
+                            }
+                          }}
+                          className="px-12 py-5 bg-white text-black font-black uppercase tracking-widest text-xl hover:scale-105 transition-transform shadow-[0_4px_10px_rgba(0,0,0,0.5)] rounded-lg w-full min-w-[280px]"
+                        >
+                          {difficulty === "NIGHTMARE" ? "FINISH" : "NEXT ROUND"}
+                        </button>
+                      )}
                       <button
                         onClick={() => startGame()}
                         className="text-white/40 text-[11px] md:text-xs font-bold uppercase tracking-[0.15em] md:tracking-[0.2em] active:text-white md:hover:text-white transition-colors border-b border-white/0 active:border-white/50 md:hover:border-white/50 pb-1 min-h-[44px] touch-manipulation"
@@ -1214,6 +1274,10 @@ const App: React.FC = () => {
               <button
                 onClick={() => {
                   setDifficulty("EASY");
+                  setIsInfiniteMode(true);
+                  setCurrentRound(1);
+                  setCurrentBpm(100);
+                  setCurrentLength(5);
                   setStatus(GameStatus.MENU);
                 }}
                 className="text-white/40 text-[11px] md:text-xs font-bold uppercase tracking-[0.15em] md:tracking-[0.2em] active:text-white md:hover:text-white transition-colors border-b border-white/0 active:border-white/50 md:hover:border-white/50 pb-1 min-h-[44px] touch-manipulation"
