@@ -723,9 +723,10 @@ const App: React.FC = () => {
 
     // If LOCAL mode is selected, skip AI analysis and show results immediately
     if (judgementMode === "LOCAL") {
-      setRobotState(localScore > 60 ? "happy" : "sad");
+      const isPerfect = localScore === 100;
+      setRobotState(isPerfect ? "happy" : "sad");
       setResultData({
-        success: localScore > 60,
+        success: isPerfect,
         correct_count: localCorrectCount,
         score: localScore,
         feedback: "Local Tracking complete. Ultra-fast feedback active!",
@@ -764,22 +765,25 @@ const App: React.FC = () => {
       const correct_count = finalAiResults.filter((r) => r === true).length;
       const score = Math.round((correct_count / seq.length) * 100);
 
+      const isPerfect = score === 100;
       setResultData({
-        success: score > 60,
+        success: isPerfect,
         correct_count,
         score,
-        feedback:
-          score > 80 ? "Perfect rhythm!" : "AI verified your performance.",
+        feedback: isPerfect
+          ? "Perfect rhythm!"
+          : "AI verified your performance.",
         detailed_results: finalAiResults.map((r) => r === true),
         detected_counts: aiDetectedCountsRef.current.flat(),
       });
-      setRobotState(score > 60 ? "happy" : "sad");
+      setRobotState(isPerfect ? "happy" : "sad");
     } catch (error) {
       console.error("Gemini Analysis Failed or Timeout", error);
       // Fallback to local results
-      setRobotState(localScore > 60 ? "happy" : "sad");
+      const isPerfect = localScore === 100;
+      setRobotState(isPerfect ? "happy" : "sad");
       setResultData({
-        success: localScore > 60,
+        success: isPerfect,
         correct_count: localCorrectCount,
         score: localScore,
         feedback: "AI Offline. Using local judgment.",
@@ -952,7 +956,7 @@ const App: React.FC = () => {
                         "transition-all duration-300 ease-out inline-block";
                       if (isCurrent) {
                         displayClass +=
-                          " text-white scale-[1.8] drop-shadow-[0_0_30px_rgba(255,255,255,0.4)] z-10 font-black";
+                          " text-yellow-400 scale-[1.8] drop-shadow-[0_0_30px_rgba(250,204,21,0.6)] z-10 font-black";
                       } else {
                         displayClass += " text-white opacity-100";
                       }
@@ -1138,31 +1142,75 @@ const App: React.FC = () => {
 
             {/* Action Buttons */}
             <div className="flex flex-col items-center gap-4 md:gap-5 mt-3 md:mt-4">
-              <button
-                onClick={() => {
-                  const diffs = Object.keys(DIFFICULTIES) as Difficulty[];
-                  const currentIndex = diffs.indexOf(difficulty);
-                  const nextDifficulty = diffs[currentIndex + 1];
+              {(() => {
+                const currentCorrect = aiResults.filter(
+                  (r) => r === true
+                ).length;
+                const isFinished =
+                  aiResults.length > 0 && aiResults.every((r) => r !== null);
+                const isPerfect =
+                  isFinished && currentCorrect === sequence.length;
 
-                  if (nextDifficulty) {
-                    setDifficulty(nextDifficulty);
-                    startGame(nextDifficulty);
-                  } else {
-                    // Reset to beginning when finished
-                    setDifficulty("EASY");
-                    setStatus(GameStatus.MENU);
-                  }
-                }}
-                className="px-12 py-5 bg-white text-black font-black uppercase tracking-widest text-xl hover:scale-105 transition-transform shadow-[0_4px_10px_rgba(0,0,0,0.5)]"
-              >
-                {difficulty === "NIGHTMARE" ? "FINISH" : "NEXT ROUND"}
-              </button>
-              <button
-                onClick={() => startGame()}
-                className="text-white/40 text-[11px] md:text-xs font-bold uppercase tracking-[0.15em] md:tracking-[0.2em] active:text-white md:hover:text-white transition-colors border-b border-white/0 active:border-white/50 md:hover:border-white/50 pb-1 min-h-[44px] touch-manipulation"
-              >
-                Try Again
-              </button>
+                if (!isFinished) {
+                  return (
+                    <button
+                      disabled
+                      className="px-12 py-5 bg-white/10 text-white/40 font-black uppercase tracking-widest text-xl cursor-not-allowed opacity-50 border border-white/10 rounded-lg"
+                    >
+                      Analyzing...
+                    </button>
+                  );
+                }
+
+                if (isPerfect) {
+                  return (
+                    <div className="flex flex-col items-center gap-4">
+                      <button
+                        onClick={() => {
+                          const diffs = Object.keys(
+                            DIFFICULTIES
+                          ) as Difficulty[];
+                          const currentIndex = diffs.indexOf(difficulty);
+                          const nextDifficulty = diffs[currentIndex + 1];
+
+                          if (nextDifficulty) {
+                            setDifficulty(nextDifficulty);
+                            startGame(nextDifficulty);
+                          } else {
+                            // Reset to beginning when finished
+                            setDifficulty("EASY");
+                            setStatus(GameStatus.MENU);
+                          }
+                        }}
+                        className="px-12 py-5 bg-white text-black font-black uppercase tracking-widest text-xl hover:scale-105 transition-transform shadow-[0_4px_10px_rgba(0,0,0,0.5)] rounded-lg w-full min-w-[280px]"
+                      >
+                        {difficulty === "NIGHTMARE" ? "FINISH" : "NEXT ROUND"}
+                      </button>
+                      <button
+                        onClick={() => startGame()}
+                        className="text-white/40 text-[11px] md:text-xs font-bold uppercase tracking-[0.15em] md:tracking-[0.2em] active:text-white md:hover:text-white transition-colors border-b border-white/0 active:border-white/50 md:hover:border-white/50 pb-1 min-h-[44px] touch-manipulation"
+                      >
+                        Replay Level
+                      </button>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="flex flex-col items-center gap-4">
+                    <button
+                      onClick={() => startGame()}
+                      className="px-12 py-5 bg-white text-black font-black uppercase tracking-widest text-xl hover:scale-105 transition-transform shadow-[0_4px_10px_rgba(0,0,0,0.5)] rounded-lg w-full min-w-[280px]"
+                    >
+                      REPLAY LEVEL
+                    </button>
+                    <p className="text-red-500 font-bold uppercase tracking-widest text-[10px] animate-pulse">
+                      Score 100% to unlock next level
+                    </p>
+                  </div>
+                );
+              })()}
+
               <button
                 onClick={() => {
                   setDifficulty("EASY");
