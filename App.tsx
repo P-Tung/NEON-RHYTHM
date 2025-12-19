@@ -931,10 +931,6 @@ const App: React.FC = () => {
                       let displayClass = "transition-all duration-100";
                       if (isCurrent) {
                         displayClass += " text-white scale-110";
-                      } else if (result === true) {
-                        displayClass += " text-green-500 opacity-90";
-                      } else if (result === false) {
-                        displayClass += " text-red-500 opacity-90";
                       } else {
                         displayClass += " text-white opacity-80";
                       }
