@@ -72,7 +72,7 @@ const App: React.FC = () => {
   const [judgementMode, setJudgementMode] = useState<"LOCAL" | "AI">("AI");
   const [isMuted, setIsMuted] = useState(false);
   const [showFingerVector, setShowFingerVector] = useState(true);
-  const [videoOpacity, setVideoOpacity] = useState(0.2);
+  const [videoOpacity, setVideoOpacity] = useState(1);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   // Loading State
