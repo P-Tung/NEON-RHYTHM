@@ -71,7 +71,7 @@ const App: React.FC = () => {
   const [capturedFrames, setCapturedFrames] = useState<string[]>([]);
   const [judgementMode, setJudgementMode] = useState<"LOCAL" | "AI">("AI");
   const [isMuted, setIsMuted] = useState(false);
-  const [showFingerVector, setShowFingerVector] = useState(true);
+  const [showFingerVector, setShowFingerVector] = useState(false);
   const [videoOpacity, setVideoOpacity] = useState(1);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
