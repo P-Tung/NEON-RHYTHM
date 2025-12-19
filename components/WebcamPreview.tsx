@@ -97,12 +97,9 @@ const WebcamPreview: React.FC<WebcamPreviewProps> = ({
           if (showFingerVector && landmarksRef.current) {
             const landmarks = landmarksRef.current;
 
-            ctx.strokeStyle = "#00f3ff"; // Neon Cyan
-            ctx.lineWidth = 4;
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.9)"; // Solid White
+            ctx.lineWidth = 3;
             ctx.lineCap = "round";
-            // Removed expensive shadowBlur to prevent GPU thermal throttling
-            // ctx.shadowColor = '#00f3ff';
-            // ctx.shadowBlur = 10;
 
             const getCoords = (lm: NormalizedLandmark) => {
               // Mirror X: (1 - x)
@@ -125,11 +122,11 @@ const WebcamPreview: React.FC<WebcamPreviewProps> = ({
             ctx.stroke();
 
             // Draw Joints
-            ctx.fillStyle = "#ff00ff"; // Neon Pink for joints
+            ctx.fillStyle = "rgba(200, 200, 200, 0.8)"; // Simple Gray for joints
             for (const lm of landmarks) {
               const p = getCoords(lm);
               ctx.beginPath();
-              ctx.arc(p.x, p.y, 6, 0, 2 * Math.PI);
+              ctx.arc(p.x, p.y, 4, 0, 2 * Math.PI);
               ctx.fill();
             }
           }

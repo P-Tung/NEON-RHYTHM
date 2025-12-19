@@ -68,6 +68,7 @@ const App: React.FC = () => {
   const [judgementMode, setJudgementMode] = useState<"LOCAL" | "AI">("AI");
   const [isMuted, setIsMuted] = useState(false);
   const [showFingerVector, setShowFingerVector] = useState(true);
+  const [videoOpacity, setVideoOpacity] = useState(0.2);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   // Loading State
@@ -716,8 +717,8 @@ const App: React.FC = () => {
       {/* Background Video */}
       <video
         ref={videoRef}
-        className="absolute inset-0 w-full h-full object-cover opacity-30 scale-x-[-1]"
-        // style={{ opacity: 0.01 }}
+        className="absolute inset-0 w-full h-full object-cover scale-x-[-1]"
+        style={{ opacity: videoOpacity }}
         playsInline
         muted
         autoPlay
@@ -731,8 +732,8 @@ const App: React.FC = () => {
         showFingerVector={showFingerVector}
       />
 
-      {/* Overlay Gradient */}
-      <div className="absolute inset-0 bg-gradient-to-t from-[#050510] via-transparent to-[#050510]/80 pointer-events-none" />
+      {/* Minimal Overlay Shadow (Top only for visibility) */}
+      <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-transparent pointer-events-none" />
 
       {/* Top Controls */}
       <div className="absolute top-4 right-4 md:top-6 md:right-6 z-50 flex gap-2 md:gap-3">
@@ -758,28 +759,33 @@ const App: React.FC = () => {
       {isCameraReady &&
         status !== GameStatus.RESULT &&
         status !== GameStatus.LOADING && (
-          <div className="absolute top-4 md:top-8 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center pointer-events-none">
-            <div className="text-[14px] md:text-[18px] text-white font-bold mb-0.5 md:mb-1 drop-shadow-[0_2px_2px_rgba(0,0,0,1)] text-center w-max">
-              Only 1% people can do this...
+          <>
+            <div className="absolute top-[12%] left-1/2 -translate-x-1/2 z-50 flex flex-col items-center pointer-events-none w-full">
+              {/* <div className="text-[20px] md:text-[32px] text-white font-black mb-2 drop-shadow-[0_2px_2px_rgba(0,0,0,1)] text-center px-6 leading-tight">
+                Only 1% people can do this...
+              </div> */}
             </div>
-            <div className="text-6xl md:text-9xl font-black text-white drop-shadow-[0_4px_4px_rgba(0,0,0,1)]">
-              {fingerCount}
+
+            <div className="absolute top-4 left-4 z-50 pointer-events-none">
+              <div className="text-xl md:text-3xl font-black text-white drop-shadow-[0_2px_2px_rgba(0,0,0,1)] opacity-80">
+                {fingerCount}
+              </div>
             </div>
-          </div>
+          </>
         )}
 
       {/* Main Content Container */}
       <div className="absolute inset-0 z-20 flex flex-col items-center justify-center p-3 md:p-4">
         {/* --- LOADING STATE (Entry Screen) --- */}
         {status === GameStatus.LOADING && (
-          <div className="glass-panel p-6 md:p-8 rounded-3xl max-w-md w-full mx-4 flex flex-col gap-5 md:gap-6 animate-pop">
+          <div className="bg-black/80 p-8 rounded-3xl max-w-md w-full mx-4 flex flex-col gap-6 animate-pop border border-white/20">
             {/* Title */}
             <div className="text-center">
-              <h1 className="text-3xl md:text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-[#00f3ff] to-[#ff00ff] mb-1 md:mb-2">
-                RHYTHM HANDS
+              <h1 className="text-4xl font-black text-white mb-2 tracking-tighter shadow-sm">
+                NEON RHYTHM
               </h1>
-              <p className="text-white/60 text-xs md:text-sm">
-                {isAssetsReady ? "System Ready." : "Loading assets..."}
+              <p className="text-white/40 text-sm font-bold uppercase tracking-widest">
+                {isAssetsReady ? "SYSTEM READY" : "LOADING ASSETS..."}
               </p>
             </div>
 
@@ -825,12 +831,12 @@ const App: React.FC = () => {
         {/* --- PLAYING STATE --- */}
         {(status === GameStatus.PLAYING || status === GameStatus.ANALYZING) && (
           <div className="w-full h-full flex flex-col justify-between py-6 md:py-12">
-            {/* Status (Left) */}
-            <div className="absolute top-4 left-4 md:top-8 md:left-8">
-              <div className="glass-panel px-3 py-1.5 md:px-4 md:py-2 rounded-full flex items-center gap-1.5 md:gap-2">
-                <div className="w-2 h-2 md:w-3 md:h-3 rounded-full bg-green-400 animate-pulse" />
-                <span className="text-[10px] md:text-xs font-bold tracking-wider md:tracking-widest">
-                  LIVE FEED
+            {/* Simple Status (Optional) */}
+            <div className="absolute top-4 right-20 md:right-24">
+              <div className="px-3 py-1 flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-red-600 animate-pulse" />
+                <span className="text-[10px] font-bold text-white drop-shadow-[0_1px_1px_rgba(0,0,0,1)]">
+                  REC
                 </span>
               </div>
             </div>
@@ -844,31 +850,29 @@ const App: React.FC = () => {
                 </div>
               )}
 
-              {/* Active Sequence - Simple Text Overlay */}
+              {/* Active Sequence - Simple Text Overlay (Matches Reference Image) */}
               {status === GameStatus.PLAYING && (
-                <div className="flex flex-col items-center select-none animate-pop mt-20 md:mt-32">
-                  <div className="flex items-center justify-center font-black text-4xl md:text-7xl text-white drop-shadow-[0_4px_4px_rgba(0,0,0,1)] bg-black/20 px-6 py-2 rounded-lg backdrop-blur-sm">
+                <div className="flex flex-col items-center select-none animate-pop w-full px-4">
+                  <div className="flex flex-wrap justify-center items-center font-bold text-4xl md:text-6xl lg:text-7xl text-white drop-shadow-[0_2px_2px_rgba(0,0,0,1)]">
                     {sequence.map((num, idx) => {
                       const isCurrent = idx === currentBeat;
                       const result = localResults[idx];
 
-                      let displayClass = "transition-all duration-150";
+                      let displayClass = "transition-all duration-100";
                       if (isCurrent) {
-                        displayClass += " text-white scale-125 mx-2";
+                        displayClass += " text-white scale-110";
                       } else if (result === true) {
-                        displayClass += " text-green-400 opacity-60";
+                        displayClass += " text-green-500 opacity-90";
                       } else if (result === false) {
-                        displayClass += " text-red-500 opacity-60";
+                        displayClass += " text-red-500 opacity-90";
                       } else {
-                        displayClass += " text-white opacity-40";
+                        displayClass += " text-white opacity-80";
                       }
 
                       return (
                         <React.Fragment key={idx}>
                           {idx > 0 && (
-                            <span className="mx-0.5 opacity-30 text-white">
-                              -
-                            </span>
+                            <span className="mx-0.5 opacity-60">-</span>
                           )}
                           <span className={displayClass}>{num}</span>
                         </React.Fragment>
@@ -905,36 +909,33 @@ const App: React.FC = () => {
             <Robot state={robotState} />
 
             <h1
-              className={`text-5xl md:text-7xl lg:text-9xl font-black ${
-                resultData.success
-                  ? "text-[#00f3ff] text-glow"
-                  : "text-[#ff00ff] text-glow-pink"
-              } animate-pop`}
+              className={`text-6xl md:text-8xl font-black ${
+                resultData.success ? "text-white" : "text-white/80"
+              } drop-shadow-[0_4px_4px_rgba(0,0,0,1)]`}
             >
               {resultData.correct_count} / {sequence.length}
             </h1>
 
             {/* Detailed Results Panel */}
-            <div className="glass-panel p-4 md:p-6 rounded-2xl md:rounded-3xl bg-white/5 backdrop-blur-md border border-white/10 w-full">
-              <div className="text-left text-[10px] md:text-xs uppercase font-bold text-white/50 mb-3 md:mb-4 tracking-wider md:tracking-widest">
-                VERDICT
+            <div className="bg-black/60 p-6 rounded-3xl border border-white/10 w-full backdrop-blur-md">
+              <div className="text-center text-xs font-black text-white/40 mb-6 tracking-[0.3em] uppercase">
+                PERFORMANCE LOG
               </div>
 
               {/* Grid of Results */}
               <div className="flex gap-1.5 md:gap-2 mb-4 md:mb-6 justify-center flex-wrap">
                 {sequence.map((target, idx) => {
                   const isHit = resultData.detailed_results[idx];
-                  const detected = resultData.detected_counts[idx];
                   const colorClass = isHit
-                    ? "border-[#00f3ff] bg-[#00f3ff]/20 shadow-[0_0_10px_#00f3ff] md:shadow-[0_0_15px_#00f3ff]"
-                    : "border-[#ff00ff] bg-[#ff00ff]/10";
-                  const textClass = isHit ? "text-[#00f3ff]" : "text-[#ff00ff]";
+                    ? "border-green-500 bg-green-500/20"
+                    : "border-red-500 bg-red-500/20";
+                  const textClass = isHit ? "text-green-500" : "text-red-500";
                   const label = isHit ? "HIT" : "MISS";
 
                   return (
                     <div
                       key={idx}
-                      className={`w-12 h-16 md:w-16 md:h-24 border-2 ${colorClass} rounded-lg md:rounded-xl flex flex-col items-center justify-center backdrop-blur-sm transform transition-all active:scale-95 md:hover:scale-110`}
+                      className={`w-14 h-20 md:w-16 md:h-24 border-2 ${colorClass} rounded-lg flex flex-col items-center justify-center transition-all`}
                     >
                       <span
                         className={`text-2xl md:text-4xl font-black ${textClass} mb-0.5 md:mb-1`}
@@ -974,13 +975,11 @@ const App: React.FC = () => {
                   const isCorrectMatch = detected === targetCount;
                   const isHit = resultData.detailed_results[beatIdx];
 
-                  let borderColor = isHit
-                    ? "border-[#00f3ff] shadow-[0_0_10px_#00f3ff]"
-                    : "border-[#ff00ff]/50";
+                  let borderColor = isHit ? "border-white" : "border-white/30";
 
                   const badgeColor = isCorrectMatch
-                    ? "bg-[#00f3ff]"
-                    : "bg-[#ff00ff]";
+                    ? "bg-white text-black"
+                    : "bg-red-600 text-white";
 
                   return (
                     <div
@@ -1060,6 +1059,8 @@ const App: React.FC = () => {
         setShowFingerVector={setShowFingerVector}
         judgementMode={judgementMode}
         setJudgementMode={setJudgementMode}
+        videoOpacity={videoOpacity}
+        setVideoOpacity={setVideoOpacity}
       />
     </div>
   );

@@ -8,6 +8,8 @@ interface SettingsModalProps {
   setShowFingerVector: (show: boolean) => void;
   judgementMode: "LOCAL" | "AI";
   setJudgementMode: (mode: "LOCAL" | "AI") => void;
+  videoOpacity: number;
+  setVideoOpacity: (opacity: number) => void;
 }
 
 const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -17,20 +19,22 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   setShowFingerVector,
   judgementMode,
   setJudgementMode,
+  videoOpacity,
+  setVideoOpacity,
 }) => {
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in duration-200">
       <div
-        className="glass-panel p-6 md:p-8 rounded-3xl max-w-sm w-full animate-pop shadow-[0_0_50px_rgba(0,0,0,0.5)] border border-white/10"
+        className="bg-black p-6 md:p-8 rounded-3xl max-w-sm w-full animate-pop shadow-2xl border border-white/20"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-between items-center mb-8">
           <div className="flex items-center gap-3">
-            <Settings className="text-[#00f3ff]" size={24} />
-            <h2 className="text-2xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-[#00f3ff] to-[#ff00ff]">
-              SETTINGS
+            <Settings className="text-white" size={24} />
+            <h2 className="text-2xl font-black tracking-tighter text-white uppercase">
+              Settings
             </h2>
           </div>
           <button
@@ -41,30 +45,51 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
           </button>
         </div>
 
-        <div className="space-y-4">
+        <div className="space-y-6">
+          {/* Video Opacity Slider */}
+          <div className="flex flex-col gap-3 p-4 bg-white/5 rounded-2xl border border-white/5">
+            <div className="flex justify-between items-center">
+              <span className="text-xs font-black tracking-widest text-white/90">
+                VIDEO OPACITY
+              </span>
+              <span className="text-[10px] font-mono text-white/60">
+                {Math.round(videoOpacity * 100)}%
+              </span>
+            </div>
+            <input
+              type="range"
+              min="0.1"
+              max="1"
+              step="0.01"
+              value={videoOpacity}
+              onChange={(e) => setVideoOpacity(parseFloat(e.target.value))}
+              className="w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-white"
+            />
+          </div>
+
           {/* Hand Skeleton Toggle */}
-          <div className="flex items-center justify-between p-4 bg-white/5 rounded-2xl border border-white/5 hover:border-white/10 transition-colors group">
+          <div className="flex items-center justify-between p-4 bg-white/5 rounded-2xl border border-white/5 group">
             <div className="flex flex-col">
-              <span className="text-sm font-black tracking-widest text-white/80 group-hover:text-white transition-colors">
-                HAND SKELETON
+              <span className="text-xs font-black tracking-widest text-white/90">
+                GHOST SKELETON
               </span>
               <span className="text-[10px] text-white/40 uppercase font-bold">
-                Visualize finger tracking
+                Overlay hand landmarks
               </span>
             </div>
             <button
               onClick={() => setShowFingerVector(!showFingerVector)}
-              className={`w-14 h-7 rounded-full transition-all relative flex items-center px-1 ${
+              className={`w-12 h-6 rounded-full transition-all relative flex items-center px-1 ${
                 showFingerVector
-                  ? "bg-[#00f3ff]/20 border border-[#00f3ff]/50"
-                  : "bg-white/5 border border-white/10"
+                  ? "bg-white"
+                  : "bg-white/10 border border-white/10"
               }`}
             >
               <div
-                className={`w-5 h-5 rounded-full transition-all shadow-lg ${
+                className={`w-4 h-4 rounded-full transition-all ${
                   showFingerVector
-                    ? "translate-x-7 bg-[#00f3ff] shadow-[0_0_10px_#00f3ff]"
-                    : "translate-x-0 bg-white/20"
+                    ? "translate-x-6 bg-black"
+                    : "translate-x-0 bg-white/40"
                 }`}
               />
             </button>
@@ -72,15 +97,15 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
 
           {/* Judgement Mode Toggle */}
           <div className="flex flex-col gap-3 p-4 bg-white/5 rounded-2xl border border-white/5">
-            <span className="text-sm font-black tracking-widest text-white/80">
-              JUDGEMENT MODE
+            <span className="text-xs font-black tracking-widest text-white/90">
+              ENGINE MODE
             </span>
-            <div className="flex bg-black/40 p-1 rounded-full border border-white/10 w-full">
+            <div className="flex bg-black/40 p-1 rounded-lg border border-white/10 w-full">
               <button
                 onClick={() => setJudgementMode("LOCAL")}
-                className={`flex-1 py-2 px-4 rounded-full text-[10px] font-black tracking-widest uppercase transition-all ${
+                className={`flex-1 py-2 px-4 rounded md text-[10px] font-black tracking-widest uppercase transition-all ${
                   judgementMode === "LOCAL"
-                    ? "bg-white/10 text-[#00f3ff] shadow-[0_0_15px_rgba(0,243,255,0.2)]"
+                    ? "bg-white text-black shadow-lg"
                     : "text-white/30 hover:text-white/60"
                 }`}
               >
@@ -88,9 +113,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
               </button>
               <button
                 onClick={() => setJudgementMode("AI")}
-                className={`flex-1 py-2 px-4 rounded-full text-[10px] font-black tracking-widest uppercase transition-all ${
+                className={`flex-1 py-2 px-4 rounded md text-[10px] font-black tracking-widest uppercase transition-all ${
                   judgementMode === "AI"
-                    ? "bg-white/10 text-[#ff00ff] shadow-[0_0_15px_rgba(255,0,255,0.2)]"
+                    ? "bg-white text-black shadow-lg"
                     : "text-white/30 hover:text-white/60"
                 }`}
               >
@@ -99,9 +124,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           </div>
 
-          <div className="pt-4 border-t border-white/5">
+          <div className="pt-4 border-t border-white/10">
             <p className="text-[9px] text-white/20 uppercase font-bold tracking-[0.2em] text-center">
-              v1.0.0 • NEON RHYTHM ENGINE
+              SYSTEM v1.0.0
             </p>
           </div>
         </div>
