@@ -786,8 +786,9 @@ const App: React.FC = () => {
       <video
         ref={videoRef}
         className="absolute inset-0 w-full h-full object-cover scale-x-[-1]"
-        // style={{ opacity: 0 }}
-        style={{ opacity: videoOpacity }}
+        style={{
+          opacity: window.location.hostname === "localhost" ? 0 : videoOpacity,
+        }}
         playsInline
         muted
         autoPlay
