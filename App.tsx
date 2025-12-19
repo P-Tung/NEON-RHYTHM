@@ -1117,7 +1117,7 @@ const App: React.FC = () => {
             </div>
 
             {/* Action Buttons */}
-            <div className="flex flex-wrap justify-center gap-6 md:gap-8 mt-3 md:mt-4">
+            <div className="flex flex-col items-center gap-4 md:gap-5 mt-3 md:mt-4">
               <button
                 onClick={() => {
                   const diffs = Object.keys(DIFFICULTIES) as Difficulty[];
