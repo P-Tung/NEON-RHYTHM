@@ -805,7 +805,7 @@ const App: React.FC = () => {
         ref={videoRef}
         className="absolute inset-0 w-full h-full object-cover scale-x-[-1]"
         style={{
-          opacity: window.location.hostname === "localhost" ? 0 : videoOpacity,
+          opacity: window.location.hostname === "localhost" ? 1 : videoOpacity,
         }}
         playsInline
         muted
@@ -854,8 +854,8 @@ const App: React.FC = () => {
               </div> */}
             </div>
 
-            <div className="absolute top-4 left-4 z-50 pointer-events-none">
-              <div className="text-xl md:text-3xl font-black text-white drop-shadow-[0_2px_2px_rgba(0,0,0,1)] opacity-80">
+            <div className="absolute top-6 left-6 z-50 pointer-events-none">
+              <div className="text-4xl md:text-6xl font-black text-yellow-400 drop-shadow-[0_4px_4px_rgba(0,0,0,1.0)]">
                 {fingerCount}
               </div>
             </div>
@@ -932,7 +932,7 @@ const App: React.FC = () => {
             {/* Top Center Countdown */}
             {countdown !== null && (
               <div className="absolute top-[10%] left-1/2 -translate-x-1/2 z-50 pointer-events-none">
-                <div className="text-[12rem] md:text-[20rem] font-black text-white drop-shadow-[0_10px_10px_rgba(0,0,0,1)] animate-pulse">
+                <div className="text-[12rem] md:text-[22rem] font-black text-white drop-shadow-[0_10px_30px_rgba(0,0,0,0.8)] animate-pulse">
                   {countdown}
                 </div>
               </div>
@@ -943,22 +943,24 @@ const App: React.FC = () => {
               {/* Active Sequence - Simple Text Overlay (Matches Reference Image) */}
               {status === GameStatus.PLAYING && (
                 <div className="flex flex-col items-center select-none animate-pop w-full px-4">
-                  <div className="flex flex-wrap justify-center items-center font-bold text-4xl md:text-6xl lg:text-7xl text-white drop-shadow-[0_2px_2px_rgba(0,0,0,1)]">
+                  <div className="flex flex-wrap justify-center items-center font-bold text-4xl md:text-6xl lg:text-7xl text-white drop-shadow-[0_2px_2px_rgba(0,0,0,1)] gap-4 md:gap-8">
                     {sequence.map((num, idx) => {
                       const isCurrent = idx === currentBeat;
                       const result = localResults[idx];
 
-                      let displayClass = "transition-all duration-100";
+                      let displayClass =
+                        "transition-all duration-300 ease-out inline-block";
                       if (isCurrent) {
-                        displayClass += " text-white scale-110";
+                        displayClass +=
+                          " text-white scale-[1.8] drop-shadow-[0_0_30px_rgba(255,255,255,0.4)] z-10 font-black";
                       } else {
-                        displayClass += " text-white opacity-80";
+                        displayClass += " text-white opacity-100";
                       }
 
                       return (
                         <React.Fragment key={idx}>
                           {idx > 0 && (
-                            <span className="mx-0.5 opacity-60">-</span>
+                            <span className="mx-2 opacity-100">-</span>
                           )}
                           <span className={displayClass}>{num}</span>
                         </React.Fragment>
