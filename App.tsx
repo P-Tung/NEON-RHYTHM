@@ -545,8 +545,12 @@ const App: React.FC = () => {
 
     // Start the beat loop after audio offset for perfect sync
     const startBeatLoop = () => {
-      // Create groups to store frames chronologically for each beat
+      // Create groups to store frames and local counts chronologically for each beat
       const beatFrameGroups: (string | null)[][] = Array.from(
+        { length: seq.length },
+        () => [null, null, null]
+      );
+      const beatLocalCounts: (number | null)[][] = Array.from(
         { length: seq.length },
         () => [null, null, null]
       );
@@ -563,6 +567,7 @@ const App: React.FC = () => {
 
           // Capture frame at the precise moment (using setTimeout from loop start)
           const timerId = setTimeout(() => {
+            const currentLocalCount = fingerCountRef.current;
             const frame =
               videoRef.current && canvasRef.current
                 ? (() => {
@@ -579,17 +584,22 @@ const App: React.FC = () => {
 
             if (frame) {
               beatFrameGroups[beatIdx][snapshotIdx] = frame;
+              beatLocalCounts[beatIdx][snapshotIdx] = currentLocalCount;
 
-              // If this specific beat group is now complete, send to AI
-              if (
-                beatFrameGroups[beatIdx].every((f) => f !== null) &&
-                judgementMode === "AI"
-              ) {
-                analyzeBeat(
-                  beatIdx,
-                  beatFrameGroups[beatIdx] as string[],
-                  target
-                );
+              // If this specific beat group is now complete
+              if (beatFrameGroups[beatIdx].every((f) => f !== null)) {
+                if (judgementMode === "AI") {
+                  analyzeBeat(
+                    beatIdx,
+                    beatFrameGroups[beatIdx] as string[],
+                    target
+                  );
+                } else {
+                  // LOCAL mode: Populate detection counts from MediaPipe
+                  const localCounts = beatLocalCounts[beatIdx] as number[];
+                  aiDetectedCountsRef.current[beatIdx] = localCounts;
+                  setAiDetectedCounts([...aiDetectedCountsRef.current]);
+                }
               }
             }
           }, Math.max(0, delay));
@@ -606,6 +616,12 @@ const App: React.FC = () => {
           const isHit = hasHitCurrentBeatRef.current;
           results[beat] = isHit;
           setLocalResults([...results]);
+
+          // In LOCAL mode, we still want to show results on the final screen
+          if (judgementMode === "LOCAL") {
+            aiResultsRef.current[beat] = isHit;
+            setAiResults([...aiResultsRef.current]);
+          }
 
           if (isHit) playSuccessSound();
           else playFailSound();
@@ -714,7 +730,7 @@ const App: React.FC = () => {
         score: localScore,
         feedback: "Local Tracking complete. Ultra-fast feedback active!",
         detailed_results: localResults.map((r) => r === true),
-        detected_counts: new Array(seq.length * 3).fill(0), // Placeholder for UI
+        detected_counts: aiDetectedCountsRef.current.flat(),
       });
       setStatus(GameStatus.RESULT);
       return;
@@ -768,8 +784,10 @@ const App: React.FC = () => {
         score: localScore,
         feedback: "AI Offline. Using local judgment.",
         detailed_results: localResults.map((r) => r === true),
-        detected_counts: seq.map(() => 0), // Placeholder
+        detected_counts: aiDetectedCountsRef.current.flat(),
       });
+      // Also update aiResults to show the color badges
+      setAiResults(localResults.map((r) => r === true));
       setStatus(GameStatus.RESULT);
     }
   };
