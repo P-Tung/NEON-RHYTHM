@@ -6,6 +6,8 @@ interface SettingsModalProps {
   onClose: () => void;
   showFingerVector: boolean;
   setShowFingerVector: (show: boolean) => void;
+  judgementMode: "LOCAL" | "AI";
+  setJudgementMode: (mode: "LOCAL" | "AI") => void;
 }
 
 const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -13,6 +15,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   onClose,
   showFingerVector,
   setShowFingerVector,
+  judgementMode,
+  setJudgementMode,
 }) => {
   if (!isOpen) return null;
 
@@ -38,6 +42,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
         </div>
 
         <div className="space-y-4">
+          {/* Hand Skeleton Toggle */}
           <div className="flex items-center justify-between p-4 bg-white/5 rounded-2xl border border-white/5 hover:border-white/10 transition-colors group">
             <div className="flex flex-col">
               <span className="text-sm font-black tracking-widest text-white/80 group-hover:text-white transition-colors">
@@ -63,6 +68,35 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                 }`}
               />
             </button>
+          </div>
+
+          {/* Judgement Mode Toggle */}
+          <div className="flex flex-col gap-3 p-4 bg-white/5 rounded-2xl border border-white/5">
+            <span className="text-sm font-black tracking-widest text-white/80">
+              JUDGEMENT MODE
+            </span>
+            <div className="flex bg-black/40 p-1 rounded-full border border-white/10 w-full">
+              <button
+                onClick={() => setJudgementMode("LOCAL")}
+                className={`flex-1 py-2 px-4 rounded-full text-[10px] font-black tracking-widest uppercase transition-all ${
+                  judgementMode === "LOCAL"
+                    ? "bg-white/10 text-[#00f3ff] shadow-[0_0_15px_rgba(0,243,255,0.2)]"
+                    : "text-white/30 hover:text-white/60"
+                }`}
+              >
+                Local
+              </button>
+              <button
+                onClick={() => setJudgementMode("AI")}
+                className={`flex-1 py-2 px-4 rounded-full text-[10px] font-black tracking-widest uppercase transition-all ${
+                  judgementMode === "AI"
+                    ? "bg-white/10 text-[#ff00ff] shadow-[0_0_15px_rgba(255,0,255,0.2)]"
+                    : "text-white/30 hover:text-white/60"
+                }`}
+              >
+                AI Judge
+              </button>
+            </div>
           </div>
 
           <div className="pt-4 border-t border-white/5">

@@ -440,10 +440,11 @@ const App: React.FC = () => {
   }, [isMuted]);
 
   // --- GAME LOOP ---
-  const startGame = async () => {
+  const startGame = async (forcedDifficulty?: Difficulty) => {
     cleanupTempData(); // Clear memory/timers from previous rounds
 
-    const newSequence = generateSequence(difficulty);
+    const targetDifficulty = forcedDifficulty || difficulty;
+    const newSequence = generateSequence(targetDifficulty);
     setSequence(newSequence);
     setLocalResults(new Array(newSequence.length).fill(null));
     setCapturedFrames([]);
@@ -454,7 +455,7 @@ const App: React.FC = () => {
     hasHitCurrentBeatRef.current = false;
 
     // Calculate timing based on difficulty's playback rate
-    const targetBPM = DIFFICULTIES[difficulty].bpm;
+    const targetBPM = DIFFICULTIES[targetDifficulty].bpm;
     const playbackRate = targetBPM / BASE_BPM;
 
     // Time until first beat at current playback rate
@@ -716,6 +717,7 @@ const App: React.FC = () => {
       <video
         ref={videoRef}
         className="absolute inset-0 w-full h-full object-cover opacity-30 scale-x-[-1]"
+        style={{ opacity: 0.01 }}
         playsInline
         muted
         autoPlay
@@ -803,76 +805,19 @@ const App: React.FC = () => {
         {/* --- MENU STATE --- */}
         {status === GameStatus.MENU && (
           <div className="flex flex-col items-center gap-4 md:gap-8 animate-pop w-full max-w-sm md:max-w-none">
-            <div className="text-center mt-8 md:mt-20">
-              <h1 className="text-4xl md:text-6xl lg:text-8xl font-black italic tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-[#00f3ff] to-[#ff00ff] drop-shadow-[0_0_10px_rgba(0,243,255,0.4)] md:drop-shadow-[0_0_15px_rgba(0,243,255,0.5)]">
-                NEON RHYTHM
-              </h1>
-              <p className="text-[#00f3ff] tracking-[0.2em] md:tracking-[0.3em] font-bold text-xs md:text-sm mt-1 md:mt-2">
-                GESTURE BATTLE
-              </p>
-            </div>
-
-            {/* Difficulty Selector - Improved Styling */}
-            <div className="flex flex-col gap-3 md:gap-4 w-full max-w-sm items-center px-2">
-              <div className="text-[10px] md:text-xs font-bold text-white/40 tracking-[0.15em] md:tracking-[0.2em] uppercase mb-2 md:mb-3 text-center">
-                CHOOSE YOUR DIFFICULTY
-              </div>
-              {(Object.keys(DIFFICULTIES) as Difficulty[]).map((d) => (
-                <button
-                  key={d}
-                  onClick={() => setDifficulty(d)}
-                  className={`
-                                        w-full py-3 md:py-4 rounded-full text-xs md:text-sm font-black tracking-[0.15em] md:tracking-[0.2em] uppercase transition-all duration-300 border min-h-[44px] touch-manipulation active:scale-95
-                                        ${
-                                          difficulty === d
-                                            ? `bg-white/10 ${DIFFICULTIES[d].color} border-white/50 scale-105 shadow-[0_0_20px_rgba(255,255,255,0.15)]`
-                                            : "bg-black/60 border-white/20 text-white/30 active:bg-white/5 active:text-white/80 active:scale-[0.98]"
-                                        }
-                                    `}
-                >
-                  {DIFFICULTIES[d].name}
-                </button>
-              ))}
-              <p className="text-[9px] md:text-[10px] uppercase font-mono text-white/30 mt-2 md:mt-4 tracking-wider md:tracking-widest">
-                {DIFFICULTIES[difficulty].length} ROUNDS •{" "}
-                {DIFFICULTIES[difficulty].bpm} BPM
-              </p>
-            </div>
-
-            {/* Judgement Mode Toggle */}
-            <div className="flex bg-black/40 p-1 rounded-full border border-white/10 w-full max-w-[280px]">
-              <button
-                onClick={() => setJudgementMode("LOCAL")}
-                className={`flex-1 py-2 px-4 rounded-full text-[10px] font-black tracking-widest uppercase transition-all ${
-                  judgementMode === "LOCAL"
-                    ? "bg-white/10 text-[#00f3ff] shadow-[0_0_15px_rgba(0,243,255,0.2)]"
-                    : "text-white/30 hover:text-white/60"
-                }`}
-              >
-                Local Tracking
-              </button>
-              <button
-                onClick={() => setJudgementMode("AI")}
-                className={`flex-1 py-2 px-4 rounded-full text-[10px] font-black tracking-widest uppercase transition-all ${
-                  judgementMode === "AI"
-                    ? "bg-white/10 text-[#ff00ff] shadow-[0_0_15px_rgba(255,0,255,0.2)]"
-                    : "text-white/30 hover:text-white/60"
-                }`}
-              >
-                AI Judge
-              </button>
-            </div>
-
             {!isCameraReady ? (
               <div className="text-yellow-400 animate-pulse text-xs md:text-sm">
                 Initializing Camera...
               </div>
             ) : (
               <button
-                onClick={startGame}
+                onClick={() => {
+                  setDifficulty("EASY");
+                  startGame("EASY");
+                }}
                 className="group relative px-6 md:px-10 py-4 md:py-5 rounded-full bg-gradient-to-r from-[#00f3ff] to-[#ff00ff] text-black font-black text-base md:text-xl italic tracking-wider md:tracking-widest active:scale-95 md:hover:scale-105 transition-transform shadow-[0_0_20px_rgba(0,243,255,0.3)] md:shadow-[0_0_30px_rgba(0,243,255,0.4)] min-h-[44px] touch-manipulation"
               >
-                START GROOVE
+                START
               </button>
             )}
           </div>
@@ -1092,15 +1037,37 @@ const App: React.FC = () => {
             </div>
 
             {/* Action Buttons */}
-            <div className="flex gap-6 md:gap-8 mt-3 md:mt-4">
+            <div className="flex flex-wrap justify-center gap-6 md:gap-8 mt-3 md:mt-4">
               <button
-                onClick={startGame}
+                onClick={() => {
+                  const diffs = Object.keys(DIFFICULTIES) as Difficulty[];
+                  const currentIndex = diffs.indexOf(difficulty);
+                  const nextDifficulty = diffs[currentIndex + 1];
+
+                  if (nextDifficulty) {
+                    setDifficulty(nextDifficulty);
+                    startGame(nextDifficulty);
+                  } else {
+                    // Reset to beginning when finished
+                    setDifficulty("EASY");
+                    setStatus(GameStatus.MENU);
+                  }
+                }}
+                className="px-10 py-4 bg-gradient-to-r from-[#00f3ff] to-[#ff00ff] rounded-full text-black font-black uppercase tracking-widest text-base hover:scale-105 transition-transform shadow-[0_0_30px_rgba(0,243,255,0.6)] animate-pulse"
+              >
+                {difficulty === "NIGHTMARE" ? "FINISH" : "NEXT ROUND"}
+              </button>
+              <button
+                onClick={() => startGame()}
                 className="text-white/40 text-[11px] md:text-xs font-bold uppercase tracking-[0.15em] md:tracking-[0.2em] active:text-white md:hover:text-white transition-colors border-b border-white/0 active:border-white/50 md:hover:border-white/50 pb-1 min-h-[44px] touch-manipulation"
               >
                 Try Again
               </button>
               <button
-                onClick={() => setStatus(GameStatus.MENU)}
+                onClick={() => {
+                  setDifficulty("EASY");
+                  setStatus(GameStatus.MENU);
+                }}
                 className="text-white/40 text-[11px] md:text-xs font-bold uppercase tracking-[0.15em] md:tracking-[0.2em] active:text-white md:hover:text-white transition-colors border-b border-white/0 active:border-white/50 md:hover:border-white/50 pb-1 min-h-[44px] touch-manipulation"
               >
                 Back to Menu
@@ -1116,6 +1083,8 @@ const App: React.FC = () => {
         onClose={() => setIsSettingsOpen(false)}
         showFingerVector={showFingerVector}
         setShowFingerVector={setShowFingerVector}
+        judgementMode={judgementMode}
+        setJudgementMode={setJudgementMode}
       />
     </div>
   );
