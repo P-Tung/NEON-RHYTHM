@@ -21,6 +21,8 @@ import {
   MUSIC_INTRO_URL,
   MUSIC_GAME_URL,
   MUSIC_SCORE_URL,
+  WIN_SOUND_URL,
+  LOSE_SOUND_URL,
   BASE_BPM,
   AUDIO_OFFSET_MS,
   FIRST_BEAT_TIME_SEC,
@@ -43,6 +45,8 @@ const App: React.FC = () => {
   const introBufferRef = useRef<AudioBuffer | null>(null);
   const gameBufferRef = useRef<AudioBuffer | null>(null);
   const scoreBufferRef = useRef<AudioBuffer | null>(null);
+  const winBufferRef = useRef<AudioBuffer | null>(null);
+  const loseBufferRef = useRef<AudioBuffer | null>(null);
   const currentSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const currentGainRef = useRef<GainNode | null>(null);
 
@@ -92,6 +96,152 @@ const App: React.FC = () => {
   const [resultData, setResultData] = useState<GeminiResponse | null>(null);
   const [aiResults, setAiResults] = useState<(boolean | null)[]>([]);
   const [aiDetectedCounts, setAiDetectedCounts] = useState<number[][]>([]);
+  const [revealedResults, setRevealedResults] = useState<(boolean | null)[]>(
+    []
+  );
+
+  // --- AUDIO HELPERS ---
+  // Countdown beep: Matches index copy.html (always plays, not affected by mute)
+  const playCountdownBeep = useCallback((count: number) => {
+    if (!audioCtxRef.current) return;
+    const ctx = audioCtxRef.current;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.frequency.value = 400 + count * 100; // Pitch shift based on count
+    gain.gain.value = 0.1;
+    gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.1);
+
+    osc.start();
+    osc.stop(ctx.currentTime + 0.1);
+
+    // Disconnect nodes to free memory after sound ends
+    setTimeout(() => {
+      osc.disconnect();
+      gain.disconnect();
+    }, 200);
+  }, []);
+
+  // Metronome sound: Matches index copy.html rhythm engine (always plays, not affected by mute)
+  const playTick = useCallback((beatNumber: number) => {
+    if (!audioCtxRef.current) return;
+    const ctx = audioCtxRef.current;
+    const osc = ctx.createOscillator();
+    const envelope = ctx.createGain();
+
+    osc.connect(envelope);
+    envelope.connect(ctx.destination);
+
+    // Sound properties - match HTML version
+    if (beatNumber === 0) {
+      osc.frequency.value = 1200.0; // High sharp tick for beat 1
+    } else {
+      osc.frequency.value = 800.0; // Lower tick
+    }
+
+    // Very short, percussive tick
+    envelope.gain.value = 0.15;
+    envelope.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.05);
+
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.05);
+
+    // Disconnect nodes to free memory
+    setTimeout(() => {
+      osc.disconnect();
+      envelope.disconnect();
+    }, 100);
+  }, []);
+
+  // Success: Pleasant major chord chime (nice sounding ding)
+  const playSuccessSound = useCallback(() => {
+    if (!audioCtxRef.current || isMuted) return;
+    const ctx = audioCtxRef.current;
+    const now = ctx.currentTime;
+
+    // Create a simple major triad
+    [523.25, 659.25, 783.99].forEach((freq, i) => {
+      // C Major (C5, E5, G5)
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = "sine";
+      osc.frequency.value = freq;
+
+      gain.gain.setValueAtTime(0.08, now); // Slightly boosted
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25 + i * 0.05);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(now + 0.4);
+
+      // Cleanup
+      setTimeout(() => {
+        osc.disconnect();
+        gain.disconnect();
+      }, 500);
+    });
+  }, [isMuted]);
+
+  // Fail: Low buzzy saw wave
+  const playFailSound = useCallback(() => {
+    if (!audioCtxRef.current || isMuted) return;
+    const ctx = audioCtxRef.current;
+    const now = ctx.currentTime;
+
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(150, now);
+    osc.frequency.linearRampToValueAtTime(50, now + 0.3);
+
+    gain.gain.setValueAtTime(0.1, now);
+    gain.gain.linearRampToValueAtTime(0.001, now + 0.3);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(now + 0.3);
+
+    // Cleanup
+    setTimeout(() => {
+      osc.disconnect();
+      gain.disconnect();
+    }, 400);
+  }, [isMuted]);
+
+  // One-shot audio player for win/lose effects (not looped, not stopping bg music)
+  const playOneShot = useCallback(
+    (type: "win" | "lose") => {
+      const ctx = audioCtxRef.current;
+      if (!ctx || isMuted) return;
+
+      const buffer =
+        type === "win" ? winBufferRef.current : loseBufferRef.current;
+      if (!buffer) return;
+
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+
+      const gain = ctx.createGain();
+      gain.gain.value = 0.5;
+
+      source.connect(gain);
+      gain.connect(ctx.destination);
+      source.start(0);
+
+      // Cleanup
+      source.onended = () => {
+        source.disconnect();
+        gain.disconnect();
+      };
+    },
+    [isMuted]
+  );
 
   // Memory Cleanup: Clear all temp data, timers and frames
   const cleanupTempData = useCallback(() => {
@@ -108,6 +258,7 @@ const App: React.FC = () => {
     setCapturedFrames([]);
     setLocalResults([]);
     setAiResults([]);
+    setRevealedResults([]);
     setAiDetectedCounts([]);
     aiResultsRef.current = [];
     aiDetectedCountsRef.current = [];
@@ -130,6 +281,109 @@ const App: React.FC = () => {
       }
     }
   }, [fingerCount, status, currentBeat, sequence]);
+
+  // Handle Score Screen Reveal Logic and Sounds
+  useEffect(() => {
+    if (status === GameStatus.RESULT) {
+      if (judgementMode === "LOCAL") {
+        // LOCAL MODE: Reveal one by one with a delay
+        setRevealedResults(new Array(sequence.length).fill(null));
+        let i = 0;
+        const interval = setInterval(() => {
+          if (i < sequence.length) {
+            const res = aiResultsRef.current[i];
+            setRevealedResults((prev) => {
+              const next = [...prev];
+              next[i] = res;
+              return next;
+            });
+            if (res === true) playSuccessSound();
+            else if (res === false) playFailSound();
+            i++;
+
+            // If this was the last revealed beat, decide win or lose sound
+            if (i === sequence.length) {
+              const totalCorrect = [...aiResultsRef.current].filter(
+                (r) => r === true
+              ).length;
+              const isPerfect = totalCorrect === sequence.length;
+              setTimeout(() => {
+                playOneShot(isPerfect ? "win" : "lose");
+              }, 500);
+            }
+          } else {
+            clearInterval(interval);
+          }
+        }, 600);
+        gameTimersRef.current.push(interval);
+        return () => clearInterval(interval);
+      } else {
+        // AI MODE: Sync revealedResults with aiResults as they come
+        // If results already exist when entering screen, we play them with a slight stagger
+        // otherwise they play when aiResults updates (handled in next effect)
+        const initialResults = [...aiResults];
+        setRevealedResults(new Array(sequence.length).fill(null));
+
+        let i = 0;
+        const interval = setInterval(() => {
+          if (i < sequence.length) {
+            if (initialResults[i] !== null) {
+              const res = initialResults[i];
+              setRevealedResults((prev) => {
+                const next = [...prev];
+                next[i] = res;
+                return next;
+              });
+              if (res === true) playSuccessSound();
+              else if (res === false) playFailSound();
+            }
+            i++;
+          } else {
+            clearInterval(interval);
+          }
+        }, 150);
+        gameTimersRef.current.push(interval);
+        return () => clearInterval(interval);
+      }
+    } else {
+      setRevealedResults(new Array(sequence.length).fill(null));
+    }
+  }, [status, judgementMode, sequence.length, playSuccessSound, playFailSound]);
+
+  // Watch for NEW AI results coming in while on score screen
+  useEffect(() => {
+    if (status === GameStatus.RESULT && judgementMode === "AI") {
+      aiResults.forEach((res, idx) => {
+        if (res !== null && revealedResults[idx] === null) {
+          // Play sound and update revealed
+          if (res === true) playSuccessSound();
+          else if (res === false) playFailSound();
+
+          setRevealedResults((prev) => {
+            const next = [...prev];
+            next[idx] = res;
+
+            // Check if this finalizes the sequence to play win/lose sound
+            if (next.every((r) => r !== null)) {
+              const totalCorrect = next.filter((r) => r === true).length;
+              const isPerfect = totalCorrect === sequence.length;
+              setTimeout(() => {
+                playOneShot(isPerfect ? "win" : "lose");
+              }, 500);
+            }
+            return next;
+          });
+        }
+      });
+    }
+  }, [
+    aiResults,
+    status,
+    judgementMode,
+    revealedResults,
+    playSuccessSound,
+    playFailSound,
+  ]);
 
   // Generate random sequence based on difficulty or infinite stats
   const generateSequence = useCallback(
@@ -170,7 +424,7 @@ const App: React.FC = () => {
       if (!ctx) return;
 
       // Load all tracks in parallel
-      const [intro, game, score] = await Promise.all([
+      const [intro, game, score, win, lose] = await Promise.all([
         introBufferRef.current
           ? Promise.resolve(introBufferRef.current)
           : loadAudioBuffer(MUSIC_INTRO_URL, ctx),
@@ -180,11 +434,19 @@ const App: React.FC = () => {
         scoreBufferRef.current
           ? Promise.resolve(scoreBufferRef.current)
           : loadAudioBuffer(MUSIC_SCORE_URL, ctx),
+        winBufferRef.current
+          ? Promise.resolve(winBufferRef.current)
+          : loadAudioBuffer(WIN_SOUND_URL, ctx),
+        loseBufferRef.current
+          ? Promise.resolve(loseBufferRef.current)
+          : loadAudioBuffer(LOSE_SOUND_URL, ctx),
       ]);
 
       introBufferRef.current = intro;
       gameBufferRef.current = game;
       scoreBufferRef.current = score;
+      winBufferRef.current = win || null;
+      loseBufferRef.current = lose || null;
     } catch (error) {
       console.error("Audio initialization failed:", error);
     }
@@ -345,119 +607,6 @@ const App: React.FC = () => {
     gain.gain.cancelScheduledValues(now);
     gain.gain.setValueAtTime(isMuted ? 0 : targetVolume, now);
   }, [isMuted, status]);
-
-  // Countdown beep: Matches index copy.html (always plays, not affected by mute)
-  const playCountdownBeep = useCallback((count: number) => {
-    if (!audioCtxRef.current) return;
-    const ctx = audioCtxRef.current;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.frequency.value = 400 + count * 100; // Pitch shift based on count
-    gain.gain.value = 0.1;
-    gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.1);
-
-    osc.start();
-    osc.stop(ctx.currentTime + 0.1);
-
-    // Disconnect nodes to free memory after sound ends
-    setTimeout(() => {
-      osc.disconnect();
-      gain.disconnect();
-    }, 200);
-  }, []);
-
-  // Metronome sound: Matches index copy.html rhythm engine (always plays, not affected by mute)
-  const playTick = useCallback((beatNumber: number) => {
-    if (!audioCtxRef.current) return;
-    const ctx = audioCtxRef.current;
-    const osc = ctx.createOscillator();
-    const envelope = ctx.createGain();
-
-    osc.connect(envelope);
-    envelope.connect(ctx.destination);
-
-    // Sound properties - match HTML version
-    if (beatNumber === 0) {
-      osc.frequency.value = 1200.0; // High sharp tick for beat 1
-    } else {
-      osc.frequency.value = 800.0; // Lower tick
-    }
-
-    // Very short, percussive tick
-    envelope.gain.value = 0.15;
-    envelope.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.05);
-
-    osc.start(ctx.currentTime);
-    osc.stop(ctx.currentTime + 0.05);
-
-    // Disconnect nodes to free memory
-    setTimeout(() => {
-      osc.disconnect();
-      envelope.disconnect();
-    }, 100);
-  }, []);
-
-  // Success: Pleasant major chord chime
-  const playSuccessSound = useCallback(() => {
-    if (!audioCtxRef.current || isMuted) return;
-    const ctx = audioCtxRef.current;
-    const now = ctx.currentTime;
-
-    // Create a simple major triad
-    [523.25, 659.25, 783.99].forEach((freq, i) => {
-      // C Major (C5, E5, G5)
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-
-      osc.type = "sine";
-      osc.frequency.value = freq;
-
-      gain.gain.setValueAtTime(0.05, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3 + i * 0.1);
-
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start();
-      osc.stop(now + 0.5);
-
-      // Cleanup
-      setTimeout(() => {
-        osc.disconnect();
-        gain.disconnect();
-      }, 600);
-    });
-  }, [isMuted]);
-
-  // Fail: Low buzzy saw wave
-  const playFailSound = useCallback(() => {
-    if (!audioCtxRef.current || isMuted) return;
-    const ctx = audioCtxRef.current;
-    const now = ctx.currentTime;
-
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-
-    osc.type = "sawtooth";
-    osc.frequency.setValueAtTime(150, now);
-    osc.frequency.linearRampToValueAtTime(50, now + 0.3);
-
-    gain.gain.setValueAtTime(0.1, now);
-    gain.gain.linearRampToValueAtTime(0.001, now + 0.3);
-
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start();
-    osc.stop(now + 0.3);
-
-    // Cleanup
-    setTimeout(() => {
-      osc.disconnect();
-      gain.disconnect();
-    }, 400);
-  }, [isMuted]);
 
   // --- GAME LOOP ---
   const startGame = async (
@@ -721,6 +870,10 @@ const App: React.FC = () => {
       // Update State for UI
       setAiResults([...aiResultsRef.current]);
       setAiDetectedCounts([...aiDetectedCountsRef.current]);
+
+      // Play sound for real-time AI feedback
+      if (isSuccess) playSuccessSound();
+      else playFailSound();
     } catch (e) {
       console.error(`AI Beat ${beatIdx} failed:`, e);
       // Fail silently, analyzeGame will use local fallback for missing results
@@ -891,7 +1044,7 @@ const App: React.FC = () => {
             {/* Title */}
             <div className="text-center">
               <h1 className="text-4xl font-black text-white mb-2 tracking-tighter shadow-sm">
-                NEON RHYTHM
+                FINGER RHYTHM
               </h1>
               <p className="text-white/40 text-sm font-bold uppercase tracking-widest">
                 {isAssetsReady ? "SYSTEM READY" : "LOADING ASSETS..."}
@@ -926,12 +1079,12 @@ const App: React.FC = () => {
             ) : (
               <div className="flex flex-col items-center gap-6">
                 <div className="flex flex-col items-center text-center">
-                  <h2 className="text-xl md:text-2xl font-black text-white/60 tracking-widest uppercase mb-1">
+                  {/* <h2 className="text-xl md:text-2xl font-black text-white/60 tracking-widest uppercase mb-1">
                     Mode
-                  </h2>
-                  <div className="text-3xl md:text-4xl font-black text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]">
-                    INFINITE SURVIVAL
-                  </div>
+                  </h2>  */}
+                  {/* <div className="text-3xl md:text-4xl font-black text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]">
+                    FINGER RHYTHM
+                  </div> */}
                 </div>
 
                 <button
@@ -1060,9 +1213,12 @@ const App: React.FC = () => {
             <Robot state={robotState} />
 
             {(() => {
-              const currentCorrect = aiResults.filter((r) => r === true).length;
+              const currentCorrect = revealedResults.filter(
+                (r) => r === true
+              ).length;
               const isFinished =
-                aiResults.filter((r) => r === null).length === 0;
+                revealedResults.length > 0 &&
+                revealedResults.filter((r) => r === null).length === 0;
 
               return (
                 <div className="flex flex-col items-center">
@@ -1089,24 +1245,24 @@ const App: React.FC = () => {
               {/* Grid of Results */}
               <div className="flex gap-1.5 md:gap-2 mb-4 md:mb-6 justify-center flex-wrap">
                 {sequence.map((target, idx) => {
-                  const aiRes = aiResults[idx];
-                  const isPending = aiRes === null;
+                  const res = revealedResults[idx];
+                  const isPending = res === null;
 
                   const colorClass = isPending
                     ? "border-white/20 bg-white/5 animate-pulse"
-                    : aiRes === true
+                    : res === true
                     ? "border-green-500 bg-green-500/20"
                     : "border-red-500 bg-red-500/20";
 
                   const textClass = isPending
                     ? "text-white/20"
-                    : aiRes === true
+                    : res === true
                     ? "text-green-500"
                     : "text-red-500";
 
                   const label = isPending
                     ? "..."
-                    : aiRes === true
+                    : res === true
                     ? "HIT"
                     : "MISS";
 
@@ -1140,8 +1296,8 @@ const App: React.FC = () => {
               {/* Captured Frames Grid */}
               <div className="flex gap-2 md:gap-4 justify-center flex-wrap mt-3 md:mt-4">
                 {sequence.map((targetCount, beatIdx) => {
-                  const aiRes = aiResults[beatIdx];
-                  const isPending = aiRes === null;
+                  const res = revealedResults[beatIdx];
+                  const isPending = res === null;
 
                   // Get detected counts for this beat group
                   const beatDetected = aiDetectedCounts[beatIdx] || [];
@@ -1163,13 +1319,13 @@ const App: React.FC = () => {
                   const frame = capturedFrames[startIndex + displayFrameIdx];
                   const colorClass = isPending
                     ? "border-white/10"
-                    : aiRes === true
+                    : res === true
                     ? "border-green-500"
                     : "border-red-500";
 
                   const badgeColor = isPending
                     ? "bg-white/10"
-                    : aiRes === true
+                    : res === true
                     ? "bg-green-600"
                     : "bg-red-600";
 
@@ -1207,11 +1363,12 @@ const App: React.FC = () => {
             {/* Action Buttons */}
             <div className="flex flex-col items-center gap-4 md:gap-5 mt-3 md:mt-4">
               {(() => {
-                const currentCorrect = aiResults.filter(
+                const currentCorrect = revealedResults.filter(
                   (r) => r === true
                 ).length;
                 const isFinished =
-                  aiResults.length > 0 && aiResults.every((r) => r !== null);
+                  revealedResults.length > 0 &&
+                  revealedResults.every((r) => r !== null);
                 const isPerfect =
                   isFinished && currentCorrect === sequence.length;
                 const isDev = window.location.hostname === "localhost";
@@ -1242,7 +1399,8 @@ const App: React.FC = () => {
                           }}
                           className="px-12 py-5 bg-white text-black font-black uppercase tracking-widest text-xl hover:scale-105 transition-transform shadow-[0_4px_10px_rgba(0,0,0,0.5)] rounded-lg w-full min-w-[280px]"
                         >
-                          NEXT ROUND (R{currentRound + 1})
+                          NEXT ROUND
+                          {/* {currentRound + 1} */}
                         </button>
                       ) : (
                         <button
