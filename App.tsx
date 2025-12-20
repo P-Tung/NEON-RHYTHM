@@ -803,8 +803,8 @@ const App: React.FC = () => {
             setAiResults([...aiResultsRef.current]);
           }
 
-          if (isHit) playSuccessSound();
-          else playFailSound();
+          // if (isHit) playSuccessSound();
+          // else playFailSound();
         }
 
         beat++;
@@ -885,8 +885,8 @@ const App: React.FC = () => {
       setAiDetectedCounts([...aiDetectedCountsRef.current]);
 
       // Play sound for real-time AI feedback
-      if (isSuccess) playSuccessSound();
-      else playFailSound();
+      // if (isSuccess) playSuccessSound();
+      // else playFailSound();
     } catch (e) {
       console.error(`AI Beat ${beatIdx} failed:`, e);
       // Fail silently, analyzeGame will use local fallback for missing results
