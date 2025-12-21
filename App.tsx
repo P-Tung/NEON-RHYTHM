@@ -291,7 +291,8 @@ const App: React.FC = () => {
         let i = 0;
         const interval = setInterval(() => {
           if (i < sequence.length) {
-            const res = aiResultsRef.current[i];
+            // FIX: Ensure we use the most recent value from the ref, fallback to false if still null
+            const res = aiResultsRef.current[i] ?? false; 
             setRevealedResults((prev) => {
               const next = [...prev];
               next[i] = res;
@@ -327,31 +328,28 @@ const App: React.FC = () => {
         let i = 0;
         const interval = setInterval(() => {
           if (i < sequence.length) {
+            // Check if result is available
             if (initialResults[i] !== null) {
               const res = initialResults[i];
               setRevealedResults((prev) => {
                 const next = [...prev];
-                next[i] = res;
+                // Only update if it's currently null to avoid overwriting newer results
+                if (next[i] === null) {
+                  next[i] = res;
+                  if (res === true) playSuccessSound();
+                  else if (res === false) playFailSound();
+                }
                 return next;
               });
-              if (res === true) playSuccessSound();
-              else if (res === false) playFailSound();
             }
             i++;
           } else {
             clearInterval(interval);
-            // Check if all were revealed already and play sound/set state
-            setRevealedResults((prev) => {
-              if (prev.every((r) => r !== null)) {
-                const totalCorrect = prev.filter((r) => r === true).length;
-                const isPerfect = totalCorrect === sequence.length;
-                setTimeout(() => {
-                  playOneShot(isPerfect ? "win" : "lose");
-                  setRobotState(isPerfect ? "happy" : "sad");
-                }, 500);
-              }
-              return prev;
-            });
+            // After initial staggered reveal, check if any are still null
+            // We DON'T force them here, because they might be still coming from AI
+            // The secondary effect handles late AI results.
+            // If they are still null after the AI pooling timeout in analyzeGame, 
+            // analyzeGame will update aiResults with local fallbacks, which triggers the next effect.
           }
         }, 150);
         gameTimersRef.current.push(interval);
@@ -917,13 +915,19 @@ const App: React.FC = () => {
     // If LOCAL mode is selected, skip AI analysis and show results immediately
     if (judgementMode === "LOCAL") {
       const isPerfect = localScore === 100;
+      const finalResults = localResults.map((r) => r === true);
+      
+      // Ensure state and ref are fully synced for the reveal logic
+      aiResultsRef.current = finalResults;
+      setAiResults(finalResults);
+
       setRobotState("average");
       setResultData({
         success: isPerfect,
         correct_count: localCorrectCount,
         score: localScore,
         feedback: "Local Tracking complete. Ultra-fast feedback active!",
-        detailed_results: localResults.map((r) => r === true),
+        detailed_results: finalResults,
         detected_counts: aiDetectedCountsRef.current.flat(),
       });
       setStatus(GameStatus.RESULT);
@@ -954,7 +958,16 @@ const App: React.FC = () => {
       }
 
       // 2. Aggregate final data from REF once all is settled (or timeout)
-      const finalAiResults = aiResultsRef.current.slice(0, seq.length);
+      // FIX: If some AI results are still null after timeout, fallback to local results for those specific beats
+      const finalAiResults = aiResultsRef.current.slice(0, seq.length).map((res, idx) => {
+        if (res !== null) return res;
+        return localResults[idx] === true;
+      });
+      
+      // Sync back to ref and state so UI shows the fallback results
+      aiResultsRef.current = finalAiResults;
+      setAiResults(finalAiResults);
+
       const correct_count = finalAiResults.filter((r) => r === true).length;
       const score = Math.round((correct_count / seq.length) * 100);
 
@@ -966,10 +979,12 @@ const App: React.FC = () => {
         feedback: isPerfect
           ? "Perfect rhythm!"
           : "AI verified your performance.",
-        detailed_results: finalAiResults.map((r) => r === true),
+        detailed_results: finalAiResults,
         detected_counts: aiDetectedCountsRef.current.flat(),
       });
       setRobotState("average");
+      // Ensure we are in RESULT state if timeout happened before first result
+      if (status !== GameStatus.RESULT) setStatus(GameStatus.RESULT);
     } catch (error) {
       console.error("Gemini Analysis Failed or Timeout", error);
       // Fallback to local results
