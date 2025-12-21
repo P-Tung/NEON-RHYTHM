@@ -403,7 +403,16 @@ const App: React.FC = () => {
     (diff: Difficulty, lengthOverride?: number) => {
       const config = DIFFICULTIES[diff];
       const length = lengthOverride || config.length;
-      return Array.from({ length }, () => Math.floor(Math.random() * 5) + 1);
+
+      const newSequence: number[] = [];
+      for (let i = 0; i < length; i++) {
+        let nextNum;
+        do {
+          nextNum = Math.floor(Math.random() * 5) + 1;
+        } while (i > 0 && nextNum === newSequence[i - 1]);
+        newSequence.push(nextNum);
+      }
+      return newSequence;
     },
     []
   );
@@ -996,7 +1005,7 @@ const App: React.FC = () => {
         ref={videoRef}
         className="absolute inset-0 w-full h-full object-cover scale-x-[-1]"
         style={{
-          opacity: window.location.hostname === "localhost" ? 0 : videoOpacity,
+          opacity: window.location.hostname === "1localhost" ? 0 : videoOpacity,
         }}
         playsInline
         muted
