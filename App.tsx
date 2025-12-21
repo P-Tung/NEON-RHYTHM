@@ -1039,7 +1039,7 @@ const App: React.FC = () => {
       </div>
 
       {/* DETECTED NUMBER / FINGER COUNT (DEV ONLY) */}
-      {window.location.hostname === "localhost" &&
+      {true &&
         isCameraReady &&
         status !== GameStatus.RESULT &&
         status !== GameStatus.LOADING && (
