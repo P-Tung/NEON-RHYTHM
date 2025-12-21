@@ -73,9 +73,9 @@ const App: React.FC = () => {
   const [currentBeat, setCurrentBeat] = useState(-1);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [capturedFrames, setCapturedFrames] = useState<string[]>([]);
-  const [judgementMode, setJudgementMode] = useState<"LOCAL" | "AI">("AI");
+  const [judgementMode, setJudgementMode] = useState<"LOCAL" | "AI">("LOCAL");
   const [isMuted, setIsMuted] = useState(false);
-  const [showFingerVector, setShowFingerVector] = useState(false);
+  const [showFingerVector, setShowFingerVector] = useState(true);
   const [videoOpacity, setVideoOpacity] = useState(1);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
