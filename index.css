@@ -33,6 +33,92 @@ body {
   }
 }
 
+/* --- VIRAL VIDEO STYLES --- */
+.title-wrapper {
+  position: relative;
+  z-index: 10;
+}
+
+.title {
+  font-family: 'Inter', sans-serif;
+  font-weight: 900;
+  font-size: 3.5rem;
+  line-height: .9;
+  text-transform: uppercase;
+  color: white;
+  text-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.title .top {
+  font-size: 2.5rem;
+  display: block;
+}
+
+.title .bottom {
+  font-size: 4rem;
+  background: linear-gradient(to right, #fff, #ccc);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  display: block;
+}
+
+.subtitle-viral {
+  margin-top: 0.5rem;
+  font-size: 1.25rem;
+  font-weight: 700;
+  padding: 0.5rem 1.5rem;
+  background: rgba(0,0,0,0.6);
+  backdrop-filter: blur(4px);
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.2);
+  display: inline-block;
+}
+
+.start-btn-viral {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem 3rem;
+  background: white;
+  color: black;
+  border-radius: 9999px;
+  font-weight: 900;
+  font-size: 2rem;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+  transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.start-btn-viral:active {
+  transform: scale(0.95);
+}
+
+.footer-hint-viral {
+  position: absolute;
+  bottom: 2rem;
+  padding: 0.75rem 1.5rem;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(10px);
+  border-radius: 999px;
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 0.8rem;
+  letter-spacing: 0.1em;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+@keyframes bounce-viral {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+.animate-bounce-viral {
+  animation: bounce-viral 2s infinite ease-in-out;
+}
+
 /* --- ROBOT ANIMATIONS --- */
 
 /* SAD */
