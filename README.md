@@ -19,3 +19,5 @@ View your app in AI Studio: https://ai.studio/apps/drive/1_sFXdqnzUat7fO5ufElsMv
 3. Run the app:
    `npm run dev`
 # NEON-RHYTHM
+
+readme

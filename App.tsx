@@ -7,6 +7,8 @@ import React, { useRef, useState, useEffect, useCallback } from "react";
 import { useMediaPipe } from "./hooks/useMediaPipe";
 import Robot from "./components/Robot";
 import WebcamPreview from "./components/WebcamPreview";
+import FingerCountDisplay from "./components/FingerCountDisplay";
+import SequenceDisplay from "./components/SequenceDisplay";
 import SettingsModal from "./components/SettingsModal";
 import StartScreen from "./components/StartScreen";
 import { useVideoRecorder } from "./hooks/useVideoRecorder";
@@ -54,6 +56,7 @@ const App: React.FC = () => {
 
   // Memory & Timer Management
   const gameTimersRef = useRef<(number | NodeJS.Timeout)[]>([]);
+  const gameIdRef = useRef(0);
 
   // Tracking
   const { isCameraReady, fingerCount, landmarksRef } = useMediaPipe(videoRef);
@@ -288,16 +291,23 @@ const App: React.FC = () => {
   // Handle Score Screen Reveal Logic and Sounds
   useEffect(() => {
     if (status === GameStatus.RESULT) {
+      // Initialize revealedResults to the correct length filled with null
+      // Use functional update to ensure we are working with the latest state if needed,
+      // though here we just want to reset it for the new result screen.
+      setRevealedResults(new Array(sequence.length).fill(null));
+
       if (judgementMode === "LOCAL") {
         // LOCAL MODE: Reveal one by one with a delay
-        setRevealedResults(new Array(sequence.length).fill(null));
         let i = 0;
         const interval = setInterval(() => {
           if (i < sequence.length) {
-            const res = aiResultsRef.current[i];
+            // FIX: Ensure we use the most recent value from the ref, fallback to false if still null/undefined
+            const res = aiResultsRef.current[i] ?? false;
             setRevealedResults((prev) => {
               const next = [...prev];
-              next[i] = res;
+              if (i < next.length) {
+                next[i] = res;
+              }
               return next;
             });
             if (res === true) playSuccessSound();
@@ -305,9 +315,9 @@ const App: React.FC = () => {
             i++;
 
             if (i === sequence.length) {
-              const totalCorrect = [...aiResultsRef.current].filter(
-                (r) => r === true
-              ).length;
+              const totalCorrect = aiResultsRef.current
+                .slice(0, sequence.length)
+                .filter((r) => r === true).length;
               const isPerfect = totalCorrect === sequence.length;
               setTimeout(() => {
                 playOneShot(isPerfect ? "win" : "lose");
@@ -322,11 +332,9 @@ const App: React.FC = () => {
         return () => clearInterval(interval);
       } else {
         // AI MODE: Sync revealedResults with aiResults as they come
-        // If results already exist when entering screen, we play them with a slight stagger
-        // otherwise they play when aiResults updates (handled in next effect)
+        // We use a staggered reveal for already available results, 
+        // and then the next effect handles ones that arrive late.
         const initialResults = [...aiResults];
-        setRevealedResults(new Array(sequence.length).fill(null));
-
         let i = 0;
         const interval = setInterval(() => {
           if (i < sequence.length) {
@@ -372,9 +380,18 @@ const App: React.FC = () => {
         return () => clearInterval(interval);
       }
     } else {
+      // When not in RESULT state, keep revealedResults empty or reset
+      // This prevents the previous game's results from flickering
       setRevealedResults(new Array(sequence.length).fill(null));
     }
-  }, [status, judgementMode, sequence.length, playSuccessSound, playFailSound]);
+  }, [
+    status,
+    judgementMode,
+    sequence.length,
+    playSuccessSound,
+    playFailSound,
+    aiResults, // Added aiResults to dependency to ensure the initialResults snapshot is fresh
+  ]);
 
 
   // Generate random sequence based on difficulty or infinite stats
@@ -622,6 +639,9 @@ const App: React.FC = () => {
     bpmOverride?: number,
     lengthOverride?: number
   ) => {
+    gameIdRef.current += 1; // Increment session ID
+    const currentSessionId = gameIdRef.current;
+    
     cleanupTempData(); // Clear memory/timers from previous rounds
 
     const targetDifficulty = forcedDifficulty || difficulty;
@@ -656,11 +676,6 @@ const App: React.FC = () => {
     // Time until first beat at current playback rate
     const timeToFirstBeat = FIRST_BEAT_TIME_SEC / playbackRate;
 
-    // We have a 3-second countdown, so:
-    // - If first beat is at 3s (at 1x speed), start music immediately
-    // - If first beat takes longer, delay music start
-    // - If first beat comes sooner, start music from an offset
-
     const countdownDuration = 3; // 3 seconds countdown
 
     if (timeToFirstBeat >= countdownDuration) {
@@ -670,7 +685,7 @@ const App: React.FC = () => {
       // Wait for the difference, then start countdown
       const waitTime = (timeToFirstBeat - countdownDuration) * 1000;
       const timerId = setTimeout(() => {
-        startCountdown(newSequence);
+        startCountdown(newSequence, currentSessionId);
       }, waitTime);
       gameTimersRef.current.push(timerId);
     } else {
@@ -680,7 +695,7 @@ const App: React.FC = () => {
       playTrack("game", skipAmount);
 
       // Start countdown immediately
-      startCountdown(newSequence);
+      startCountdown(newSequence, currentSessionId);
     }
   };
 
@@ -703,7 +718,7 @@ const App: React.FC = () => {
   }, [isAssetsReady, startGame]);
 
   // Separated countdown logic for cleaner code
-  const startCountdown = (newSequence: number[]) => {
+  const startCountdown = (newSequence: number[], currentSessionId: number) => {
     let count = 3;
     setCountdown(count);
     playCountdownBeep(count);
@@ -720,13 +735,13 @@ const App: React.FC = () => {
         clearInterval(timerId);
         setCountdown(null);
         // Start sequence immediately - synced with first beat!
-        runSequence(newSequence);
+        runSequence(newSequence, currentSessionId);
       }
     }, 1000);
     gameTimersRef.current.push(timerId);
   };
 
-  const runSequence = (seq: number[]) => {
+  const runSequence = (seq: number[], currentSessionId: number) => {
     // playMusic(); // Removed: Handled in startGame now
     const bpm = isInfiniteMode ? currentBpm : DIFFICULTIES[difficulty].bpm;
     const interval = 60000 / bpm;
@@ -736,8 +751,8 @@ const App: React.FC = () => {
 
     // Pre-set canvas size for optimized capture (Low res is enough for AI)
     if (canvasRef.current) {
-      canvasRef.current.width = 320;
-      canvasRef.current.height = 240;
+      canvasRef.current.width = 160;
+      canvasRef.current.height = 120;
     }
 
     // Start the beat loop after audio offset for perfect sync
@@ -789,7 +804,8 @@ const App: React.FC = () => {
                   analyzeBeat(
                     beatIdx,
                     beatFrameGroups[beatIdx] as string[],
-                    target
+                    target,
+                    currentSessionId
                   );
                 } else {
                   // LOCAL mode: Populate detection counts from MediaPipe
@@ -835,7 +851,7 @@ const App: React.FC = () => {
               .flat()
               .filter((f) => f !== null) as string[];
             setCapturedFrames(flattened);
-            analyzeGame(seq, results);
+            analyzeGame(seq, results, currentSessionId);
           }, 600);
           gameTimersRef.current.push(finishTimer);
           return;
@@ -858,7 +874,8 @@ const App: React.FC = () => {
   const analyzeBeat = async (
     beatIdx: number,
     frames: string[],
-    target: number
+    target: number,
+    sessionId: number
   ) => {
     try {
       const ai = getAI(process.env.API_KEY || "");
@@ -882,6 +899,12 @@ const App: React.FC = () => {
         contents: [{ parts: [{ text: prompt }, ...imageParts] }],
         config: { responseMimeType: "application/json" },
       });
+
+      // Session Check: If game was reset/next round while AI was thinking, ignore this result
+      if (sessionId !== gameIdRef.current) {
+        console.log(`⚠️ AI Result for Beat ${beatIdx} discarded (Old Session)`);
+        return;
+      }
 
       const data = JSON.parse(response.text);
       console.log(`✅ AI Received Beat ${beatIdx}:`, data);
@@ -909,7 +932,8 @@ const App: React.FC = () => {
 
   const analyzeGame = async (
     seq: number[],
-    localResults: (boolean | null)[]
+    localResults: (boolean | null)[],
+    sessionId: number
   ) => {
     setStatus(GameStatus.ANALYZING);
     // playTrack('score'); // Handled by useEffect monitoring status
@@ -948,6 +972,7 @@ const App: React.FC = () => {
     try {
       // 1. Wait for AT LEAST ONE AI result to finish before showing result screen
       let attempts = 0;
+      const maxAttempts = 20; // ~5 seconds max wait for the FIRST result
       let hasOneResult = false;
 
       while (attempts < 30) {
@@ -964,6 +989,9 @@ const App: React.FC = () => {
         await new Promise((r) => setTimeout(r, 200));
         attempts++;
       }
+
+      // Session Check
+      if (sessionId !== gameIdRef.current) return;
 
       // 2. Fill any missing AI results with local judgments (Failover)
       const finalAiResults = [...aiResultsRef.current].slice(0, seq.length);
@@ -1120,7 +1148,7 @@ const App: React.FC = () => {
 
             {/* Center Stage - Glass Bar Below */}
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center w-full z-40 pointer-events-none">
-              {/* Active Sequence - Simple Text Overlay (Matches Reference Image) */}
+              {/* Active Sequence */}
               {status === GameStatus.PLAYING && (
                 <div
                   className={`flex flex-col items-center select-none animate-pop w-full px-4 transition-opacity duration-500 ${countdown !== null ? "opacity-20" : "opacity-100"
@@ -1235,7 +1263,7 @@ const App: React.FC = () => {
                 ).length;
                 const isFinished =
                   revealedResults.length > 0 &&
-                  revealedResults.every((r) => r !== null);
+                  revealedResults.every((r) => r != null);
                 const isPerfect =
                   isFinished && currentCorrect === sequence.length;
                 const isDev = window.location.hostname === "localhost";
@@ -1382,7 +1410,7 @@ const App: React.FC = () => {
               <div className="flex gap-2 md:gap-4 justify-center flex-wrap mt-3 md:mt-4">
                 {sequence.map((targetCount, beatIdx) => {
                   const res = revealedResults[beatIdx];
-                  const isPending = res === null;
+                  const isPending = res == null;
 
                   // Get detected counts for this beat group
                   const beatDetected = aiDetectedCounts[beatIdx] || [];

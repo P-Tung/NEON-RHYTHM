@@ -25,7 +25,8 @@ export const useMediaPipe = (
 
   // Detect mobile for optimizations
   const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-  const DETECTION_INTERVAL = isMobile ? 66 : 0; // ~15 FPS detection on mobile is enough for rhythm, saves CPU
+  // Throttling: ~30 FPS (33ms) is enough for rhythm tracking and saves massive CPU/battery
+  const DETECTION_INTERVAL = isMobile ? 33 : 16; 
 
   // Temporal smoothing: store recent finger counts
   const fingerHistoryRef = useRef<number[]>([]);
@@ -246,15 +247,17 @@ export const useMediaPipe = (
                 ? getMode(fingerHistoryRef.current)
                 : count;
 
-            // Only update state if number changes to avoid re-renders
+            // PERFORMANCE: Only update state if count actually changed
             setFingerCount((prev) =>
               prev === smoothedCount ? prev : smoothedCount
             );
           } else {
             landmarksRef.current = null;
             // Clear history when no hand detected
-            fingerHistoryRef.current = [];
-            setFingerCount(0);
+            if (fingerCount !== 0) {
+              fingerHistoryRef.current = [];
+              setFingerCount(0);
+            }
           }
         } catch (e) {
           console.warn("Detection failed this frame", e);
