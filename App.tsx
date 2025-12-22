@@ -1387,7 +1387,12 @@ const App: React.FC = () => {
                   const url = URL.createObjectURL(videoBlob);
                   const a = document.createElement("a");
                   a.href = url;
-                  a.download = `neon-rhythm-round-${currentRound}.mp4`;
+                  
+                  // DYNAMIC EXTENSION: Extracts 'mp4' from 'video/mp4' or 'webm' from 'video/webm'
+                  const mimeType = videoBlob.type.split(";")[0]; // e.g., "video/mp4"
+                  const extension = mimeType.split("/")[1] || "mp4"; // e.g., "mp4"
+                  
+                  a.download = `neon-rhythm-round-${currentRound}.${extension}`;
                   a.click();
                   URL.revokeObjectURL(url);
                 }}

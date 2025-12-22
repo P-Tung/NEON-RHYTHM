@@ -81,10 +81,15 @@ export const useVideoRecorder = (videoRef: React.RefObject<HTMLVideoElement>) =>
         // Start MediaRecorder from Canvas Stream
         const stream = canvas.captureStream(30); // 30 FPS
 
-        // Attempt MP4, fall back to WebM
-        const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=h264")
-            ? "video/webm;codecs=h264"
-            : "video/webm";
+        // Order of preference: MP4 (iOS/Safari), then WebM with H264 (Chrome), then standard WebM
+        const types = [
+            "video/mp4;codecs=avc1",
+            "video/mp4",
+            "video/webm;codecs=h264",
+            "video/webm",
+        ];
+
+        const mimeType = types.find((type) => MediaRecorder.isTypeSupported(type)) || "video/mp4";
 
         try {
             const recorder = new MediaRecorder(stream, { mimeType });
