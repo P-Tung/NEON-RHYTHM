@@ -60,7 +60,13 @@ const App: React.FC = () => {
 
   // Tracking
   const { isCameraReady, fingerCount, landmarksRef } = useMediaPipe(videoRef);
-  const { startRecording, stopRecording, videoBlob, isRecording, setOverlayText } = useVideoRecorder(videoRef);
+  const {
+    startRecording,
+    stopRecording,
+    videoBlob,
+    isRecording,
+    setOverlayText,
+  } = useVideoRecorder(videoRef);
 
   // Ref to track if target was hit at any point during the beat (Mobile optimization)
   const hasHitCurrentBeatRef = useRef(false);
@@ -76,6 +82,7 @@ const App: React.FC = () => {
   const [status, setStatus] = useState<GameStatus>(GameStatus.LOADING);
   const [difficulty, setDifficulty] = useState<Difficulty>("EASY");
   const [sequence, setSequence] = useState<number[]>([]);
+  console.log("sequence: ", sequence);
   const [currentBeat, setCurrentBeat] = useState(-1);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [scoringEngine, setScoringEngine] = useState<"local" | "ai">("local");
@@ -294,6 +301,19 @@ const App: React.FC = () => {
       // Initialize revealedResults to the correct length filled with null
       // Use functional update to ensure we are working with the latest state if needed,
       // though here we just want to reset it for the new result screen.
+      console.log(
+        `🎬 [RESULT SCREEN] Entering result screen, sequence.length: ${sequence.length}`
+      );
+      console.log(
+        `🎬 [RESULT SCREEN] aiResultsRef.current: [${aiResultsRef.current
+          .map((r) => (r === null ? "null" : r))
+          .join(", ")}]`
+      );
+      console.log(
+        `🎬 [RESULT SCREEN] aiDetectedCountsRef.current: ${JSON.stringify(
+          aiDetectedCountsRef.current
+        )}`
+      );
       setRevealedResults(new Array(sequence.length).fill(null));
 
       if (judgementMode === "LOCAL") {
@@ -301,12 +321,16 @@ const App: React.FC = () => {
         let i = 0;
         const interval = setInterval(() => {
           if (i < sequence.length) {
-            // FIX: Ensure we use the most recent value from the ref, fallback to false if still null/undefined
-            const res = aiResultsRef.current[i] ?? false;
+            // CRITICAL: Capture current index in a const BEFORE the async setState
+            const currentIndex = i;
+            const res = aiResultsRef.current[currentIndex] ?? false;
+            console.log(
+              `🔍 [REVEAL LOCAL] Beat ${currentIndex}, aiResultsRef[${currentIndex}]: ${aiResultsRef.current[currentIndex]}, using: ${res}`
+            );
             setRevealedResults((prev) => {
               const next = [...prev];
-              if (i < next.length) {
-                next[i] = res;
+              if (currentIndex < next.length) {
+                next[currentIndex] = res;  // Use currentIndex, NOT i
               }
               return next;
             });
@@ -332,7 +356,7 @@ const App: React.FC = () => {
         return () => clearInterval(interval);
       } else {
         // AI MODE: Sync revealedResults with aiResults as they come
-        // We use a staggered reveal for already available results, 
+        // We use a staggered reveal for already available results,
         // and then the next effect handles ones that arrive late.
         const initialResults = [...aiResults];
         let i = 0;
@@ -360,7 +384,9 @@ const App: React.FC = () => {
                 const isPerfect = totalCorrect === sequence.length;
 
                 // Update Overlay for final frame
-                setOverlayText(`ROUND ${currentRound} COMPLETE\\nSCORE: ${totalCorrect}/${sequence.length}`);
+                setOverlayText(
+                  `ROUND ${currentRound} COMPLETE\\nSCORE: ${totalCorrect}/${sequence.length}`
+                );
 
                 setTimeout(() => {
                   playOneShot(isPerfect ? "win" : "lose");
@@ -392,7 +418,6 @@ const App: React.FC = () => {
     playFailSound,
     aiResults, // Added aiResults to dependency to ensure the initialResults snapshot is fresh
   ]);
-
 
   // Generate random sequence based on difficulty or infinite stats
   const generateSequence = useCallback(
@@ -512,7 +537,7 @@ const App: React.FC = () => {
       if (currentSourceRef.current) {
         try {
           currentSourceRef.current.stop();
-        } catch (e) { }
+        } catch (e) {}
         currentSourceRef.current = null;
       }
 
@@ -567,7 +592,7 @@ const App: React.FC = () => {
     if (currentSourceRef.current) {
       try {
         currentSourceRef.current.stop();
-      } catch (e) { }
+      } catch (e) {}
       currentSourceRef.current = null;
     }
     currentGainRef.current = null;
@@ -641,7 +666,7 @@ const App: React.FC = () => {
   ) => {
     gameIdRef.current += 1; // Increment session ID
     const currentSessionId = gameIdRef.current;
-    
+
     cleanupTempData(); // Clear memory/timers from previous rounds
 
     const targetDifficulty = forcedDifficulty || difficulty;
@@ -667,7 +692,9 @@ const App: React.FC = () => {
 
     // Start Video Recording
     startRecording();
-    setOverlayText(`ROUND ${isInfiniteMode ? currentRound : "?"} | ${targetDifficulty}`);
+    setOverlayText(
+      `ROUND ${isInfiniteMode ? currentRound : "?"} | ${targetDifficulty}`
+    );
     const targetBPM =
       bpmOverride ||
       (isInfiniteMode ? currentBpm : DIFFICULTIES[targetDifficulty].bpm);
@@ -767,15 +794,30 @@ const App: React.FC = () => {
         () => [null, null, null]
       );
 
-      // Snapshot offsets per beat: 500ms before, 0ms (on the beat), 500ms after
-      const snapshotOffsets = [-500, 0, 500];
+      // Snapshot offsets per beat: -300ms, 0ms (on the beat), +300ms
+      // Using 300ms instead of 500ms to ensure all snapshots complete before next beat judgement
+      const snapshotOffsets = [-300, 0, 300];
+
+      // Add a base offset for the first beat to ensure we have time to capture
+      // This shifts all snapshots forward so beat 0's first snapshot isn't at negative time
+      const firstBeatOffset = 350; // Ensures beat 0's -300ms snapshot happens at 50ms
+
+      console.log(
+        `🎮 [GAME START] Sequence: [${seq.join(
+          ", "
+        )}], Interval: ${interval}ms, FirstBeatOffset: ${firstBeatOffset}ms`
+      );
 
       // Schedule ALL snapshots for the entire sequence immediately
       seq.forEach((target, beatIdx) => {
-        const beatMoment = beatIdx * interval;
+        const beatMoment = firstBeatOffset + beatIdx * interval;
 
         snapshotOffsets.forEach((offsetMs, snapshotIdx) => {
           const delay = beatMoment + offsetMs;
+
+          console.log(
+            `📸 [SCHEDULE] Beat ${beatIdx}, Snapshot ${snapshotIdx}, Delay: ${delay}ms (beatMoment: ${beatMoment}, offset: ${offsetMs})`
+          );
 
           // Capture frame at the precise moment (using setTimeout from loop start)
           const timerId = setTimeout(() => {
@@ -783,23 +825,39 @@ const App: React.FC = () => {
             const frame =
               videoRef.current && canvasRef.current
                 ? (() => {
-                  const canvas = canvasRef.current;
-                  const video = videoRef.current;
-                  const ctx = canvas.getContext("2d");
-                  if (ctx) {
-                    ctx.drawImage(video, 0, 0, 320, 240);
-                    return canvas.toDataURL("image/jpeg", 0.5);
-                  }
-                  return null;
-                })()
+                    const canvas = canvasRef.current;
+                    const video = videoRef.current;
+                    const ctx = canvas.getContext("2d");
+                    if (ctx) {
+                      ctx.drawImage(video, 0, 0, 320, 240);
+                      return canvas.toDataURL("image/jpeg", 0.5);
+                    }
+                    return null;
+                  })()
                 : null;
+
+            console.log(
+              `📷 [CAPTURE] Beat ${beatIdx}, Snapshot ${snapshotIdx}, FingerCount: ${currentLocalCount}, HasFrame: ${!!frame}`
+            );
 
             if (frame) {
               beatFrameGroups[beatIdx][snapshotIdx] = frame;
               beatLocalCounts[beatIdx][snapshotIdx] = currentLocalCount;
 
+              const completedSnapshots = beatFrameGroups[beatIdx].filter(
+                (f) => f !== null
+              ).length;
+              console.log(
+                `📦 [STORED] Beat ${beatIdx}, Snapshot ${snapshotIdx}, CompletedSnapshots: ${completedSnapshots}/3`
+              );
+
               // If this specific beat group is now complete
               if (beatFrameGroups[beatIdx].every((f) => f !== null)) {
+                console.log(
+                  `✅ [BEAT COMPLETE] Beat ${beatIdx}, LocalCounts: [${beatLocalCounts[
+                    beatIdx
+                  ].join(", ")}], Target: ${target}`
+                );
                 if (judgementMode === "AI") {
                   analyzeBeat(
                     beatIdx,
@@ -812,54 +870,112 @@ const App: React.FC = () => {
                   const localCounts = beatLocalCounts[beatIdx] as number[];
                   aiDetectedCountsRef.current[beatIdx] = localCounts;
                   setAiDetectedCounts([...aiDetectedCountsRef.current]);
+                  console.log(
+                    `🎯 [LOCAL MODE] Beat ${beatIdx} stored counts: [${localCounts.join(
+                      ", "
+                    )}]`
+                  );
                 }
               }
+            } else {
+              console.warn(
+                `⚠️ [NO FRAME] Beat ${beatIdx}, Snapshot ${snapshotIdx} - frame was null!`
+              );
             }
           }, Math.max(0, delay));
           gameTimersRef.current.push(timerId);
         });
       });
 
-      // Show first beat immediately
-      setCurrentBeat(0);
+      // Show first beat after the offset (aligned with when snapshots start)
+      const firstBeatTimer = setTimeout(() => {
+        console.log(`👁️ [DISPLAY] Showing Beat 0 at ${firstBeatOffset}ms`);
+        setCurrentBeat(0);
+      }, firstBeatOffset);
+      gameTimersRef.current.push(firstBeatTimer);
 
-      const loopId = setInterval(() => {
-        // JUDGE THE PREVIOUS BEAT (Local fallback logic)
-        if (beat >= 0 && beat < seq.length) {
-          const isHit = hasHitCurrentBeatRef.current;
-          results[beat] = isHit;
-          setLocalResults([...results]);
+      // Start the judgement loop after the first beat offset + one interval
+      // This ensures beat 0's snapshots are complete before we judge it
+      const startJudgementLoop = () => {
+        console.log(
+          `⚖️ [JUDGEMENT LOOP START] Starting judgement loop, beat=${beat}`
+        );
+        const loopId = setInterval(() => {
+          // JUDGE THE CURRENT BEAT (Local fallback logic)
+          if (beat >= 0 && beat < seq.length) {
+            const isHit = hasHitCurrentBeatRef.current;
+            results[beat] = isHit;
+            setLocalResults([...results]);
 
-          // In LOCAL mode, we still want to show results on the final screen
-          if (judgementMode === "LOCAL") {
-            aiResultsRef.current[beat] = isHit;
-            setAiResults([...aiResultsRef.current]);
+            console.log(
+              `⚖️ [JUDGE] Beat ${beat}, Target: ${seq[beat]}, isHit: ${isHit}, hasHitRef: ${hasHitCurrentBeatRef.current}`
+            );
+
+            // In LOCAL mode, we still want to show results on the final screen
+            if (judgementMode === "LOCAL") {
+              aiResultsRef.current[beat] = isHit;
+              setAiResults([...aiResultsRef.current]);
+              console.log(
+                `📊 [LOCAL RESULT] Beat ${beat} = ${isHit}, aiResultsRef: [${aiResultsRef.current
+                  .map((r) => (r === null ? "null" : r))
+                  .join(", ")}]`
+              );
+            }
+
+            if (!isHit) playFailSound();
           }
 
-          if (!isHit) playFailSound();
-        }
+          beat++;
+          hasHitCurrentBeatRef.current = false;
 
-        beat++;
-        hasHitCurrentBeatRef.current = false;
+          if (beat >= seq.length) {
+            clearInterval(loopId);
+            setCurrentBeat(-1); // Remove active highlight so last beat result color shows
+            console.log(
+              `🏁 [GAME END] All beats judged, results: [${results
+                .map((r) => (r === null ? "null" : r))
+                .join(", ")}]`
+            );
+            // Wait for the absolute last +300ms snapshot plus a tiny safety margin
+            const finishTimer = setTimeout(() => {
+              const flattened = beatFrameGroups
+                .flat()
+                .filter((f) => f !== null) as string[];
+              console.log(
+                `📸 [FRAMES] Total captured frames: ${
+                  flattened.length
+                }, Expected: ${seq.length * 3}`
+              );
+              console.log(
+                `📊 [FINAL COUNTS] aiDetectedCountsRef: ${JSON.stringify(
+                  aiDetectedCountsRef.current
+                )}`
+              );
+              setCapturedFrames(flattened);
+              analyzeGame(seq, results, currentSessionId);
+            }, 400);
+            gameTimersRef.current.push(finishTimer);
+            return;
+          }
 
-        if (beat >= seq.length) {
-          clearInterval(loopId);
-          setCurrentBeat(-1); // Remove active highlight so last beat result color shows
-          // Wait for the absolute last +500ms snapshot plus a tiny safety margin
-          const finishTimer = setTimeout(() => {
-            const flattened = beatFrameGroups
-              .flat()
-              .filter((f) => f !== null) as string[];
-            setCapturedFrames(flattened);
-            analyzeGame(seq, results, currentSessionId);
-          }, 600);
-          gameTimersRef.current.push(finishTimer);
-          return;
-        }
+          console.log(`👁️ [DISPLAY] Showing Beat ${beat}`);
+          setCurrentBeat(beat);
+        }, interval);
+        gameTimersRef.current.push(loopId);
+      };
 
-        setCurrentBeat(beat);
-      }, interval);
-      gameTimersRef.current.push(loopId);
+      // Start judgement loop after first beat offset + one full interval
+      // This gives beat 0 a full interval to collect all snapshots before being judged
+      console.log(
+        `⏰ [SCHEDULE JUDGEMENT] Will start judgement loop at ${
+          firstBeatOffset + interval
+        }ms`
+      );
+      const judgementStartTimer = setTimeout(
+        startJudgementLoop,
+        firstBeatOffset + interval
+      );
+      gameTimersRef.current.push(judgementStartTimer);
     };
 
     // Apply audio offset for sync - if 0, start immediately
@@ -962,6 +1078,13 @@ const App: React.FC = () => {
       // Sync results immediately
       aiResultsRef.current = syncResults;
       setAiResults(syncResults);
+
+      // CRITICAL: Sync detected counts state with ref before showing results
+      setAiDetectedCounts([...aiDetectedCountsRef.current]);
+      console.log(
+        `🔄 [SYNC] Syncing aiDetectedCounts state:`,
+        aiDetectedCountsRef.current
+      );
 
       // Move to result screen
       setStatus(GameStatus.RESULT);
@@ -1076,14 +1199,13 @@ const App: React.FC = () => {
       {/* Minimal Overlay Shadow (Top only for visibility) */}
       <div className="absolute top-0 left-0 right-0 h-32 bg-gradient-to-b from-black/40 to-transparent pointer-events-none z-10" />
 
-
       {/* Main Content Container */}
       <div className="absolute inset-0 z-20 flex flex-col items-center justify-center p-3 md:p-4">
         {/* --- LOADING STATE (Viral Challenge Entry Screen) --- */}
         {status === GameStatus.LOADING && (
-          <StartScreen 
-            onStart={handleStartGame} 
-            isAssetsReady={isAssetsReady} 
+          <StartScreen
+            onStart={handleStartGame}
+            isAssetsReady={isAssetsReady}
           />
         )}
 
@@ -1151,8 +1273,9 @@ const App: React.FC = () => {
               {/* Active Sequence */}
               {status === GameStatus.PLAYING && (
                 <div
-                  className={`flex flex-col items-center select-none animate-pop w-full px-4 transition-opacity duration-500 ${countdown !== null ? "opacity-20" : "opacity-100"
-                    }`}
+                  className={`flex flex-col items-center select-none animate-pop w-full px-4 transition-opacity duration-500 ${
+                    countdown !== null ? "opacity-20" : "opacity-100"
+                  }`}
                 >
                   <div
                     className={`flex flex-col items-center gap-2 md:gap-4 transition-all duration-500`}
@@ -1379,17 +1502,20 @@ const App: React.FC = () => {
 
             {/* Detailed Results Panel */}
             <div className="bg-black/60 p-6 rounded-3xl border border-white/10 w-full backdrop-blur-md">
-
               {/* Results Sequence Overlay (Colored based on results) */}
               <div className="flex flex-wrap justify-center items-center font-bold text-4xl md:text-6xl lg:text-7xl text-white drop-shadow-[0_2px_2px_rgba(0,0,0,1)] gap-0 mb-8 md:mb-12">
                 {sequence.map((num, i) => {
+                  console.log("i: ", i);
                   const res = revealedResults[i];
+                  console.log("revealedResults: ", revealedResults);
                   const isMiss = res === false;
                   const isPending = res === null;
 
                   let colorClass = "text-white";
                   if (!isPending) {
-                    if (isMiss) colorClass = "text-red-500 drop-shadow-[0_0_15px_rgba(239,68,68,0.4)]";
+                    if (isMiss)
+                      colorClass =
+                        "text-red-500 drop-shadow-[0_0_15px_rgba(239,68,68,0.4)]";
                     else colorClass = "text-white"; // Hits remain white as requested
                   }
 
@@ -1398,7 +1524,9 @@ const App: React.FC = () => {
                       {i > 0 && (
                         <span className="mx-0.5 opacity-80 text-white">-</span>
                       )}
-                      <span className={`transition-all duration-300 ${colorClass}`}>
+                      <span
+                        className={`transition-all duration-300 ${colorClass}`}
+                      >
                         {num}
                       </span>
                     </React.Fragment>
@@ -1430,17 +1558,24 @@ const App: React.FC = () => {
                   }
 
                   const frame = capturedFrames[startIndex + displayFrameIdx];
+
+                  // Debug logging for frame display - log ALL beats to see the full picture
+                  console.log(
+                    `🖼️ [FRAME] Beat ${beatIdx}: hasFrame=${!!frame}, beatDetected=[${beatDetected.join(
+                      ","
+                    )}], detectedVal=${detectedVal}, res=${res}, isPending=${isPending}`
+                  );
                   const colorClass = isPending
                     ? "border-white/10"
                     : res === true
-                      ? "border-green-500"
-                      : "border-red-500";
+                    ? "border-green-500"
+                    : "border-red-500";
 
                   const badgeColor = isPending
                     ? "bg-white/10"
                     : res === true
-                      ? "bg-green-600"
-                      : "bg-red-600";
+                    ? "bg-green-600"
+                    : "bg-red-600";
 
                   return (
                     <div
@@ -1450,8 +1585,9 @@ const App: React.FC = () => {
                       <img
                         src={frame}
                         alt={`beat ${beatIdx + 1}`}
-                        className={`w-full h-full object-cover transition-opacity ${isPending ? "opacity-30 blur-[2px]" : "opacity-90"
-                          } group-hover:opacity-100`}
+                        className={`w-full h-full object-cover transition-opacity ${
+                          isPending ? "opacity-30 blur-[2px]" : "opacity-90"
+                        } group-hover:opacity-100`}
                       />
                       <div className="absolute top-1 right-1 bg-black/40 backdrop-blur-sm rounded text-[8px] md:text-[10px] text-white/50 px-1.5 py-0.5 font-mono border border-white/10">
                         {isPending ? "JUDGING..." : `BEAT ${beatIdx + 1}`}
@@ -1459,7 +1595,6 @@ const App: React.FC = () => {
                       <div
                         className={`absolute bottom-0 w-full ${badgeColor} py-1 flex flex-col items-center shadow-[0_-2px_10_rgba(0,0,0,0.3)] transition-colors`}
                       >
-
                         <span className="text-[8px] md:text-[10px] font-bold text-white/90 uppercase tracking-wider">
                           SAW: {isPending ? "?" : detectedVal}
                         </span>
