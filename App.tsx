@@ -403,8 +403,9 @@ const App: React.FC = () => {
                 const isPerfect = totalCorrect === sequence.length;
 
                 // Update Overlay for final frame
+                const statusText = isPerfect ? "COMPLETE" : "FAIL";
                 setOverlayText(
-                  `ROUND ${currentRound} COMPLETE\\nSCORE: ${totalCorrect}/${sequence.length}`
+                  `ROUND ${currentRound} ${statusText}\\nSCORE: ${totalCorrect}/${sequence.length}`
                 );
 
                 setTimeout(() => {
@@ -1290,6 +1291,7 @@ const App: React.FC = () => {
               const isFinished =
                 revealedResults.length > 0 &&
                 revealedResults.every((r) => r !== null);
+              const isPerfect = isFinished && currentCorrect === sequence.length;
 
               if (!isFinished) return null;
 
@@ -1303,7 +1305,7 @@ const App: React.FC = () => {
                         ROUND {currentRound}
                       </span>
                       <span className="text-xl md:text-3xl font-bold text-white/90 uppercase tracking-[0.2em] border-l-2 border-white/30 pl-4">
-                        COMPLETE
+                        {isPerfect ? "COMPLETE" : "FAIL"}
                       </span>
                     </div>
                   </div>
