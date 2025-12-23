@@ -112,6 +112,39 @@ const App: React.FC = () => {
     []
   );
 
+  // Sync Video Recorder Overlay with Game State
+  useEffect(() => {
+    if (!isRecording) return;
+
+    if (status === GameStatus.PLAYING) {
+      if (currentBeat === -1) {
+        setOverlayText(`ROUND ${currentRound}\\nGET READY!`);
+      } else {
+        // Create a string like "1 2 [[3]] 4 5" to show progress in the video
+        const displaySeq = sequence
+          .map((num, i) => (i === currentBeat ? `[[${num}]]` : num))
+          .join(" ");
+        setOverlayText(`ROUND ${currentRound}\\n${displaySeq}`);
+      }
+    } else if (status === GameStatus.ANALYZING) {
+      setOverlayText(`ROUND ${currentRound}\\nANALYZING PERFORMANCE...`);
+    }
+  }, [
+    status,
+    currentBeat,
+    sequence,
+    currentRound,
+    isRecording,
+    setOverlayText,
+  ]);
+
+  // Stop recording immediately when entering Result state
+  useEffect(() => {
+    if (status === GameStatus.RESULT && isRecording) {
+      stopRecording();
+    }
+  }, [status, isRecording, stopRecording]);
+
   // --- AUDIO HELPERS ---
   // Countdown beep: Matches index copy.html (always plays, not affected by mute)
   const playCountdownBeep = useCallback((count: number) => {
@@ -329,11 +362,6 @@ const App: React.FC = () => {
               setTimeout(() => {
                 playOneShot(isPerfect ? "win" : "lose");
                 setRobotState(isPerfect ? "happy" : "sad");
-
-                // Stop recording shortly after result is shown to capture the reaction
-                setTimeout(() => {
-                  stopRecording();
-                }, 4000);
               }, 500);
             }
           } else {
@@ -379,11 +407,6 @@ const App: React.FC = () => {
                 setTimeout(() => {
                   playOneShot(isPerfect ? "win" : "lose");
                   setRobotState(isPerfect ? "happy" : "sad");
-
-                  // Stop recording shortly after result is shown to capture the reaction
-                  setTimeout(() => {
-                    stopRecording();
-                  }, 4000);
                 }, 500);
               }
               return prev;
@@ -680,9 +703,7 @@ const App: React.FC = () => {
 
     // Start Video Recording
     startRecording();
-    setOverlayText(
-      `ROUND ${isInfiniteMode ? currentRound : "?"} | ${targetDifficulty}`
-    );
+
     const targetBPM =
       bpmOverride ||
       (isInfiniteMode ? currentBpm : DIFFICULTIES[targetDifficulty].bpm);

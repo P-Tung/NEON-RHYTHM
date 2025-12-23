@@ -67,8 +67,36 @@ export const useVideoRecorder = (videoRef: React.RefObject<HTMLVideoElement>) =>
                     // Draw multiple lines if needed
                     const lines = overlayTextRef.current.split("\\n");
                     lines.forEach((line, i) => {
-                        ctx.strokeText(line, canvas.width / 2, canvas.height - 50 - (lines.length - 1 - i) * 40);
-                        ctx.fillText(line, canvas.width / 2, canvas.height - 50 - (lines.length - 1 - i) * 40);
+                        const y = canvas.height - 50 - (lines.length - 1 - i) * 40;
+                        const x = canvas.width / 2;
+
+                        if (line.includes("[[") && line.includes("]]")) {
+                            // Support [[yellow]] highlighting
+                            const segments = line.split(/(\[\[.*?\]\])/g);
+                            const cleanLine = line.replace(/\[\[|\]\]/g, "");
+                            const totalWidth = ctx.measureText(cleanLine).width;
+                            let currentX = x - totalWidth / 2;
+
+                            segments.forEach((segment) => {
+                                if (!segment) return;
+                                if (segment.startsWith("[[") && segment.endsWith("]]")) {
+                                    const text = segment.slice(2, -2);
+                                    ctx.fillStyle = "#FACC15"; // Yellow (Tailwind yellow-400)
+                                    ctx.strokeText(text, currentX + ctx.measureText(text).width / 2, y);
+                                    ctx.fillText(text, currentX + ctx.measureText(text).width / 2, y);
+                                    currentX += ctx.measureText(text).width;
+                                } else {
+                                    ctx.fillStyle = "white";
+                                    ctx.strokeText(segment, currentX + ctx.measureText(segment).width / 2, y);
+                                    ctx.fillText(segment, currentX + ctx.measureText(segment).width / 2, y);
+                                    currentX += ctx.measureText(segment).width;
+                                }
+                            });
+                        } else {
+                            ctx.fillStyle = "white";
+                            ctx.strokeText(line, x, y);
+                            ctx.fillText(line, x, y);
+                        }
                     });
 
                     ctx.restore();
