@@ -117,7 +117,7 @@ const App: React.FC = () => {
     if (!isRecording) return;
 
     if (status === GameStatus.PLAYING) {
-      if (currentBeat === -1) {
+      if (countdown !== null) {
         setOverlayText(`ROUND ${currentRound}\\nGET READY!`);
       } else {
         // Create a string like "1 2 [[3]] 4 5" to show progress in the video
@@ -127,7 +127,9 @@ const App: React.FC = () => {
         setOverlayText(`ROUND ${currentRound}\\n${displaySeq}`);
       }
     } else if (status === GameStatus.ANALYZING) {
-      setOverlayText(`ROUND ${currentRound}\\nANALYZING PERFORMANCE...`);
+      // Keep showing the final sequence at the end instead of "ANALYZING..."
+      const displaySeq = sequence.join(" ");
+      setOverlayText(`ROUND ${currentRound}\\n${displaySeq}`);
     }
   }, [
     status,
@@ -136,6 +138,7 @@ const App: React.FC = () => {
     currentRound,
     isRecording,
     setOverlayText,
+    countdown,
   ]);
 
   // Stop recording immediately when entering Result state
