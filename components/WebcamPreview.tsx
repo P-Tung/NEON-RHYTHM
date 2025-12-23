@@ -73,24 +73,24 @@ const WebcamPreview: React.FC<WebcamPreviewProps> = ({
           ctx.clearRect(0, 0, canvas.width, canvas.height);
 
           // --- Object-Cover Math ---
-          // Calculate how the video is being scaled/cropped by CSS object-cover
+          // Updated for object-cover behavior to ensure alignment
           const videoRatio = video.videoWidth / video.videoHeight;
           const screenRatio = screenW / screenH;
 
           let drawW, drawH, startX, startY;
 
           if (screenRatio > videoRatio) {
-            // Screen is wider than video -> fit height, letterbox left/right
-            drawH = screenH;
-            drawW = screenH * videoRatio;
-            startX = (screenW - drawW) / 2;
-            startY = 0;
-          } else {
-            // Screen is narrower than video -> fit width, letterbox top/bottom
+            // Screen is wider than video -> scale to screen width, crop top/bottom
             drawW = screenW;
             drawH = screenW / videoRatio;
             startX = 0;
             startY = (screenH - drawH) / 2;
+          } else {
+            // Screen is narrower than video -> scale to screen height, crop sides
+            drawH = screenH;
+            drawW = screenH * videoRatio;
+            startX = (screenW - drawW) / 2;
+            startY = 0;
           }
 
           // --- Draw Landmarks ---

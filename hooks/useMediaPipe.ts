@@ -186,8 +186,8 @@ export const useMediaPipe = (
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: "user",
-            width: { ideal: isMobile ? 480 : 1280 },
-            height: { ideal: isMobile ? 360 : 720 },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
           },
         });
 
