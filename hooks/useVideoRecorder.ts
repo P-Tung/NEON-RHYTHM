@@ -47,10 +47,16 @@ export const useVideoRecorder = (videoRef: React.RefObject<HTMLVideoElement>) =>
         const ctx = canvas.getContext("2d");
         const video = videoRef.current;
 
+        // Set canvas dimensions to match video source (Mobile fix)
+        if (video.videoWidth && video.videoHeight) {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+        }
+
         // Start Draw Loop
         const draw = () => {
             if (ctx && video.readyState === 4) {
-                // Draw Video
+                // Draw Video (Maintain aspect ratio by using natural dimensions)
                 ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
                 // Draw Overlay (if any)
@@ -61,13 +67,17 @@ export const useVideoRecorder = (videoRef: React.RefObject<HTMLVideoElement>) =>
                     ctx.lineWidth = 4;
                     ctx.strokeStyle = "rgba(0,0,0,0.5)";
                     ctx.fillStyle = "white";
-                    ctx.font = "900 30px Inter, sans-serif";
+                    
+                    // Dynamic font size based on height
+                    const fontSize = Math.max(20, Math.floor(canvas.height * 0.05));
+                    ctx.font = `900 ${fontSize}px Inter, sans-serif`;
                     ctx.textAlign = "center";
 
                     // Draw multiple lines if needed
                     const lines = overlayTextRef.current.split("\\n");
+                    const lineHeight = fontSize * 1.3;
                     lines.forEach((line, i) => {
-                        const y = canvas.height - 50 - (lines.length - 1 - i) * 40;
+                        const y = canvas.height - (canvas.height * 0.1) - (lines.length - 1 - i) * lineHeight;
                         const x = canvas.width / 2;
 
                         if (line.includes("[[") && line.includes("]]")) {
