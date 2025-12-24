@@ -48,6 +48,7 @@ const App: React.FC = () => {
   // Difficulty Tracking Refs (to avoid stale closures)
   const infiniteBpmRef = useRef(95);
   const infiniteLengthRef = useRef(6);
+  const currentRoundRef = useRef(1);
 
   // Audio Buffers & Source
   const introBufferRef = useRef<AudioBuffer | null>(null);
@@ -835,6 +836,7 @@ const App: React.FC = () => {
     setIsInfiniteMode(true);
     setJudgementMode("LOCAL"); // Force LOCAL mode for real-time infinite play
     setCurrentRound(1);
+    currentRoundRef.current = 1;
     // Speed up initial difficulty
     infiniteBpmRef.current = 100;
     infiniteLengthRef.current = 6;
@@ -1039,13 +1041,13 @@ const App: React.FC = () => {
             if (isInfiniteMode) {
               playOneShot("win");
               setRobotState("happy");
-              setOverlayText(`ROUND ${currentRound} CLEARED!`);
+              setOverlayText(`ROUND ${currentRoundRef.current} CLEARED!`);
 
               // Progress Difficulty
               let nextBpm;
               let nextLength;
 
-              if (currentRound === 1) {
+              if (currentRoundRef.current === 1) {
                 // Next is Round 2: Specific request for 110 BPM
                 nextBpm = 110;
                 nextLength = infiniteLengthRef.current + 2;
@@ -1057,7 +1059,8 @@ const App: React.FC = () => {
 
               // Auto-start next round after short delay
               const nextRoundTimer = setTimeout(() => {
-                const nextRoundNum = currentRound + 1;
+                currentRoundRef.current += 1;
+                const nextRoundNum = currentRoundRef.current;
 
                 // Update Refs (Critical for next round's closure)
                 infiniteBpmRef.current = nextBpm;
@@ -1516,6 +1519,7 @@ const App: React.FC = () => {
                               setDifficulty("EASY");
                               setIsInfiniteMode(true);
                               setCurrentRound(1);
+                              currentRoundRef.current = 1;
                               setCurrentBpm(100);
                               setCurrentLength(6);
                               setStatus(GameStatus.LOADING);
@@ -1532,11 +1536,12 @@ const App: React.FC = () => {
                           {isInfiniteMode ? (
                             <button
                               onClick={() => {
-                                const nextRoundNum = currentRound + 1;
+                                currentRoundRef.current += 1;
+                                const nextRoundNum = currentRoundRef.current;
                                 let nextBpm;
                                 let nextLength;
 
-                                if (currentRound === 1) {
+                                if (nextRoundNum === 2) {
                                   nextBpm = 110;
                                   nextLength = currentLength + 2;
                                 } else {
