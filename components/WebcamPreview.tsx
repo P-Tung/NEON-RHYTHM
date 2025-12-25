@@ -48,7 +48,6 @@ const WebcamPreview: React.FC<WebcamPreviewProps> = ({
   landmarksRef,
   isCameraReady,
   showFingerVector = true,
-  fingerCount,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 

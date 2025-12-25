@@ -14,6 +14,106 @@ import {
 // Detect mobile once outside the hook
 const IS_MOBILE = typeof navigator !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
+// Helper: Calculate Squared 3D distance (avoids expensive Math.sqrt)
+export const getDistanceSq3D = (
+  a: NormalizedLandmark,
+  b: NormalizedLandmark,
+  ratio: number = 1
+): number => {
+  const dx = (a.x - b.x) * ratio;
+  const dy = a.y - b.y;
+  const dz = (a.z - b.z) * ratio;
+  return dx * dx + dy * dy + dz * dz;
+};
+
+// Helper: Calculate angle at point B given points A, B, C (in degrees) using 3D coordinates
+export const getAngle = (
+  a: NormalizedLandmark,
+  b: NormalizedLandmark,
+  c: NormalizedLandmark,
+  ratio: number = 1
+): number => {
+  // Vectors AB and CB in standardized coordinates
+  const ab = {
+    x: (a.x - b.x) * ratio,
+    y: a.y - b.y,
+    z: (a.z - b.z) * ratio,
+  };
+  const cb = {
+    x: (c.x - b.x) * ratio,
+    y: c.y - b.y,
+    z: (c.z - b.z) * ratio,
+  };
+
+  // Dot product in 3D
+  const dot = ab.x * cb.x + ab.y * cb.y + ab.z * cb.z;
+
+  // Magnitudes in 3D
+  const magAB = Math.hypot(ab.x, ab.y, ab.z);
+  const magCB = Math.hypot(cb.x, cb.y, cb.z);
+
+  if (magAB === 0 || magCB === 0) return 180; // Avoid division by zero
+
+  const cosAngle = Math.max(-1, Math.min(1, dot / (magAB * magCB))); // Clamp to [-1, 1]
+  return Math.acos(cosAngle) * (180 / Math.PI);
+};
+
+// Helper: Count extended fingers using Squared Relative Distances (Rotation Invariant)
+export const countFingers = (
+  landmarks: NormalizedLandmark[],
+  ratio: number
+): number => {
+  if (!landmarks || landmarks.length < 21) return 0;
+
+  const wrist = landmarks[0];
+  const PinkyMCP = landmarks[17];
+  let count = 0;
+
+  // --- THUMB (Points 2, 3, 4) ---
+  // LOGIC: Is the thumb tip further from the pinky knuckle than the base joint?
+  const thumbIP = landmarks[3];
+  const thumbTip = landmarks[4];
+
+  const distSqTipToPinky = getDistanceSq3D(thumbTip, PinkyMCP, ratio);
+  const distSqIpToPinky = getDistanceSq3D(thumbIP, PinkyMCP, ratio);
+
+  // If tip is significantly further from pinky than the inner joint, it's "out"
+  // 1.1 threshold -> 1.21 for squared comparison
+  if (distSqTipToPinky > distSqIpToPinky * 1.21) {
+    // Also check if it's not tucked deep into the palm
+    const distSqTipToWrist = getDistanceSq3D(thumbTip, wrist, ratio);
+    const distSqMcpToWrist = getDistanceSq3D(landmarks[2], wrist, ratio);
+    // 0.8 threshold -> 0.64 for squared comparison
+    if (distSqTipToWrist > distSqMcpToWrist * 0.64) {
+      count++;
+    }
+  }
+
+  // --- FINGERS (Index, Middle, Ring, Pinky) ---
+  const fingers = [
+    { mcp: 5, tip: 8 }, // Index
+    { mcp: 9, tip: 12 }, // Middle
+    { mcp: 13, tip: 16 }, // Ring
+    { mcp: 17, tip: 20 }, // Pinky
+  ];
+
+  for (const f of fingers) {
+    const mcp = landmarks[f.mcp];
+    const tip = landmarks[f.tip];
+
+    const distSqWristTip = getDistanceSq3D(wrist, tip, ratio);
+    const distSqWristMcp = getDistanceSq3D(wrist, mcp, ratio);
+
+    // LOGIC: Is the tip significantly "out" from the knuckle?
+    // 1.35 threshold -> 1.8225 for squared comparison
+    if (distSqWristTip > distSqWristMcp * 1.8225) {
+      count++;
+    }
+  }
+
+  return count;
+};
+
 export const useMediaPipe = (
   videoRef: React.RefObject<HTMLVideoElement | null>,
   onCountUpdate?: (count: number) => void
@@ -47,76 +147,6 @@ export const useMediaPipe = (
       }
     }
     return mode;
-  };
-
-// Helper: Calculate Squared 3D distance (avoids expensive Math.sqrt)
-export const getDistanceSq3D = (
-  a: NormalizedLandmark,
-  b: NormalizedLandmark,
-  ratio: number = 1
-): number => {
-  const dx = (a.x - b.x) * ratio;
-  const dy = a.y - b.y;
-  const dz = (a.z - b.z) * ratio;
-  return dx * dx + dy * dy + dz * dz;
-};
-
-// ... existing getAngle ...
-
-// Helper: Count extended fingers using Squared Relative Distances (Rotation Invariant)
-export const countFingers = (
-  landmarks: NormalizedLandmark[],
-  ratio: number
-): number => {
-    if (!landmarks || landmarks.length < 21) return 0;
-
-    const wrist = landmarks[0];
-    const PinkyMCP = landmarks[17];
-    let count = 0;
-
-    // --- THUMB (Points 2, 3, 4) ---
-    // LOGIC: Is the thumb tip further from the pinky knuckle than the base joint?
-    const thumbIP = landmarks[3];
-    const thumbTip = landmarks[4];
-
-    const distSqTipToPinky = getDistanceSq3D(thumbTip, PinkyMCP, ratio);
-    const distSqIpToPinky = getDistanceSq3D(thumbIP, PinkyMCP, ratio);
-
-    // If tip is significantly further from pinky than the inner joint, it's "out"
-    // 1.1 threshold -> 1.21 for squared comparison
-    if (distSqTipToPinky > distSqIpToPinky * 1.21) {
-      // Also check if it's not tucked deep into the palm
-      const distSqTipToWrist = getDistanceSq3D(thumbTip, wrist, ratio);
-      const distSqMcpToWrist = getDistanceSq3D(landmarks[2], wrist, ratio);
-      // 0.8 threshold -> 0.64 for squared comparison
-      if (distSqTipToWrist > distSqMcpToWrist * 0.64) {
-        count++;
-      }
-    }
-
-    // --- FINGERS (Index, Middle, Ring, Pinky) ---
-    const fingers = [
-      { mcp: 5, tip: 8 }, // Index
-      { mcp: 9, tip: 12 }, // Middle
-      { mcp: 13, tip: 16 }, // Ring
-      { mcp: 17, tip: 20 }, // Pinky
-    ];
-
-    for (const f of fingers) {
-      const mcp = landmarks[f.mcp];
-      const tip = landmarks[f.tip];
-
-      const distSqWristTip = getDistanceSq3D(wrist, tip, ratio);
-      const distSqWristMcp = getDistanceSq3D(wrist, mcp, ratio);
-
-      // LOGIC: Is the tip significantly "out" from the knuckle?
-      // 1.35 threshold -> 1.8225 for squared comparison
-      if (distSqWristTip > distSqWristMcp * 1.8225) {
-        count++;
-      }
-    }
-
-    return count;
   };
 
   useEffect(() => {
