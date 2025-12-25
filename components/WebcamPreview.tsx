@@ -146,8 +146,7 @@ const WebcamPreview: React.FC<WebcamPreviewProps> = ({
               }
 
               // Draw Count Text
-              ctx.shadowColor = "rgba(251, 191, 36, 0.8)"; // yellow-400 glow
-              ctx.shadowBlur = 20;
+              // Optimization: Remove expensive shadowBlur for mobile-first performance
               ctx.fillStyle = "#fbbf24"; // yellow-400
               ctx.strokeStyle = "black";
               ctx.lineWidth = 6;

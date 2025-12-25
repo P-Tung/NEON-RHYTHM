@@ -24,6 +24,7 @@ interface GameSceneProps {
 }
 
 const BEAT_TIME = 60 / SONG_BPM;
+const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
 const GameScene: React.FC<GameSceneProps> = ({ 
     gameStatus, 
@@ -206,18 +207,18 @@ const GameScene: React.FC<GameSceneProps> = ({
       
       {/* Pulsing Lights */}
       <ambientLight ref={ambientLightRef} intensity={0.2} />
-      <spotLight ref={spotLightRef} position={[0, 10, 5]} angle={0.5} penumbra={1} intensity={1} castShadow />
+      <spotLight ref={spotLightRef} position={[0, 10, 5]} angle={0.5} penumbra={1} intensity={1} castShadow={!isMobile} />
       
       <Environment preset="night" />
 
       {/* Floor / Track visuals */}
-      <Grid position={[0, 0, 0]} args={[6, 100]} cellThickness={0.1} cellColor="#333" sectionSize={5} sectionThickness={1.5} sectionColor={COLORS.right} fadeDistance={60} infiniteGrid />
+      <Grid position={[0, 0, 0]} args={[6, 100]} cellThickness={0.1} cellColor="#333" sectionSize={5} sectionThickness={1.5} sectionColor={COLORS.right} fadeDistance={isMobile ? 30 : 60} infiniteGrid />
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]}>
           <planeGeometry args={[4, 100]} />
           <meshStandardMaterial color="#111" roughness={0.8} metalness={0.5} />
       </mesh>
       
-      <Stars radius={50} depth={50} count={2000} factor={4} saturation={0} fade speed={1} />
+      <Stars radius={50} depth={50} count={isMobile ? 500 : 2000} factor={4} saturation={0} fade speed={1} />
 
       <Saber type="left" positionRef={leftHandPosRef} velocityRef={leftHandVelRef} />
       <Saber type="right" positionRef={rightHandPosRef} velocityRef={rightHandVelRef} />

@@ -25,10 +25,11 @@ export const useVideoRecorder = (videoRef: React.RefObject<HTMLVideoElement>, au
 
     // Initialize canvas on mount
     useEffect(() => {
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
         const canvas = document.createElement("canvas");
-        // Goal: 1080x1920 (9:16 Vertical)
-        canvas.width = 1080;
-        canvas.height = 1920;
+        // Goal: 1080x1920 (9:16 Vertical) - Scaled down for mobile performance
+        canvas.width = isMobile ? 540 : 1080;
+        canvas.height = isMobile ? 960 : 1920;
         canvasRef.current = canvas;
         return () => {
             if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
@@ -62,8 +63,9 @@ export const useVideoRecorder = (videoRef: React.RefObject<HTMLVideoElement>, au
         failInfoRef.current = { show: false, round: 1 };
 
         const canvas = canvasRef.current;
-        const ctx = canvas.getContext("2d");
+        const ctx = canvas.getContext("2d", { alpha: false }); // Optimization: disable alpha if not needed
         const video = videoRef.current;
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
         // Start Draw Loop
         const draw = () => {
@@ -200,7 +202,7 @@ export const useVideoRecorder = (videoRef: React.RefObject<HTMLVideoElement>, au
         draw();
 
         // Start MediaRecorder from Canvas Stream
-        const stream = canvas.captureStream(30);
+        const stream = canvas.captureStream(isMobile ? 24 : 30);
 
         // Add Audio if available
         if (audioStream) {
@@ -224,7 +226,7 @@ export const useVideoRecorder = (videoRef: React.RefObject<HTMLVideoElement>, au
         try {
             const recorder = new MediaRecorder(stream, {
                 mimeType,
-                videoBitsPerSecond: 5000000, // 5 Mbps for high quality 1080p
+                videoBitsPerSecond: isMobile ? 2500000 : 5000000, // 2.5 Mbps for mobile, 5 Mbps for desktop
             });
 
             recorder.ondataavailable = (e) => {

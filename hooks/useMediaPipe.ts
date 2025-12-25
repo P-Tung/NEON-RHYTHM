@@ -25,8 +25,8 @@ export const useMediaPipe = (
 
   // Detect mobile for optimizations
   const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-  // Throttling: ~30 FPS (33ms) is enough for rhythm tracking and saves massive CPU/battery
-  const DETECTION_INTERVAL = isMobile ? 33 : 16; 
+  // Throttling: ~20 FPS (50ms) is plenty for mobile rhythm tracking and saves massive CPU/battery
+  const DETECTION_INTERVAL = isMobile ? 50 : 16; 
 
   // Temporal smoothing: store recent finger counts
   const fingerHistoryRef = useRef<number[]>([]);
@@ -186,8 +186,8 @@ export const useMediaPipe = (
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: "user",
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
+            width: { ideal: isMobile ? 640 : 1280 },
+            height: { ideal: isMobile ? 480 : 720 },
           },
         });
 
