@@ -26,7 +26,7 @@ export const useMediaPipe = (
   // Detect mobile for optimizations
   const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
   // Throttling: ~20 FPS (50ms) is plenty for mobile rhythm tracking and saves massive CPU/battery
-  const DETECTION_INTERVAL = isMobile ? 50 : 16; 
+  const DETECTION_INTERVAL = isMobile ? 50 : 16;
 
   // Temporal smoothing: store recent finger counts
   const fingerHistoryRef = useRef<number[]>([]);
@@ -159,7 +159,7 @@ export const useMediaPipe = (
         const landmarker = await HandLandmarker.createFromOptions(vision, {
           baseOptions: {
             modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`,
-            delegate: isMobile ? "CPU" : "GPU",
+            delegate: "GPU",
           },
           runningMode: "VIDEO",
           numHands: 1,
