@@ -11,6 +11,35 @@ interface RobotProps {
 }
 
 const Robot: React.FC<RobotProps> = ({ state }) => {
+  const isMobile = typeof navigator !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+  if (isMobile) {
+    const getGifPath = () => {
+      switch (state) {
+        case "happy":
+          return "/win.gif";
+        case "sad":
+          return "/lose.gif";
+        case "analyzing":
+        case "average":
+        default:
+          return "/judging.gif";
+      }
+    };
+
+    return (
+      <div className="relative group">
+        <div className="relative w-48 h-48 md:w-64 md:h-64 flex items-center justify-center">
+          <img
+            src={getGifPath()}
+            alt={`${state} state`}
+            className="w-full h-full object-contain rounded-3xl"
+          />
+        </div>
+      </div>
+    );
+  }
+
   const themeClass = `${state}-theme`;
 
   // Pre-generate particles for happy state to avoid unnecessary re-computations

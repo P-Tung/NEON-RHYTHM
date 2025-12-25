@@ -104,8 +104,10 @@ export const useVideoRecorder = (videoRef: React.RefObject<HTMLVideoElement>, au
 
                 // 3. Draw Watermark (Bottom Right)
                 ctx.save();
-                ctx.shadowColor = "rgba(0,0,0,0.5)";
-                ctx.shadowBlur = 10;
+                if (!isMobile) {
+                    ctx.shadowColor = "rgba(0,0,0,0.5)";
+                    ctx.shadowBlur = 10;
+                }
                 ctx.fillStyle = "rgba(255, 255, 255, 0.7)";
                 ctx.font = "900 40px Inter, sans-serif";
                 ctx.textAlign = "right";
@@ -151,8 +153,10 @@ export const useVideoRecorder = (videoRef: React.RefObject<HTMLVideoElement>, au
                 // 5. Draw Game Overlay Text (Sequence progress)
                 if (overlayTextRef.current && !failInfo.show) {
                     ctx.save();
-                    ctx.shadowColor = "black";
-                    ctx.shadowBlur = 10;
+                    if (!isMobile) {
+                        ctx.shadowColor = "black";
+                        ctx.shadowBlur = 10;
+                    }
                     ctx.lineWidth = 10;
                     ctx.strokeStyle = "rgba(0,0,0,0.7)";
                     ctx.fillStyle = "white";
@@ -226,7 +230,7 @@ export const useVideoRecorder = (videoRef: React.RefObject<HTMLVideoElement>, au
         try {
             const recorder = new MediaRecorder(stream, {
                 mimeType,
-                videoBitsPerSecond: isMobile ? 2500000 : 5000000, // 2.5 Mbps for mobile, 5 Mbps for desktop
+                videoBitsPerSecond: isMobile ? 1200000 : 5000000, // 1.2 Mbps for mobile, 5 Mbps for desktop
             });
 
             recorder.ondataavailable = (e) => {

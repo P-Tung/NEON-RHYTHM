@@ -77,7 +77,34 @@ const App: React.FC = () => {
   const sessionIdRef = useRef(0);
 
   // Tracking
-  const { isCameraReady, fingerCount, landmarksRef } = useMediaPipe(videoRef);
+  const statusRef = useRef<GameStatus>(GameStatus.LOADING);
+  const currentBeatRef = useRef(-1);
+  const sequenceRef = useRef<number[]>([]);
+
+  // Sync refs with state
+  useEffect(() => {
+    statusRef.current = status;
+    currentBeatRef.current = currentBeat;
+    sequenceRef.current = sequence;
+  }, [status, currentBeat, sequence]);
+
+  const handleFingerCountUpdate = useCallback((count: number) => {
+    fingerCountRef.current = count;
+
+    if (
+      statusRef.current === GameStatus.PLAYING &&
+      currentBeatRef.current >= 0 &&
+      currentBeatRef.current < sequenceRef.current.length
+    ) {
+      const target = sequenceRef.current[currentBeatRef.current];
+      if (count === target && !hitBeatsRef.current[currentBeatRef.current]) {
+        console.log(`[HIT-DIRECT] count=${count} matches target=${target}`);
+        hitBeatsRef.current[currentBeatRef.current] = true;
+      }
+    }
+  }, []);
+
+  const { isCameraReady, landmarksRef } = useMediaPipe(videoRef, handleFingerCountUpdate);
   const {
     startRecording,
     stopRecording,
@@ -382,26 +409,6 @@ const App: React.FC = () => {
     setCurrentBeat(-1);
     hitBeatsRef.current = [];
   }, []);
-
-  // Sync finger count ref and check for hits
-  useEffect(() => {
-    fingerCountRef.current = fingerCount;
-
-    // If we are playing, check if this new count matches the current target
-    if (
-      status === GameStatus.PLAYING &&
-      currentBeat >= 0 &&
-      currentBeat < sequence.length
-    ) {
-      if (
-        fingerCount === sequence[currentBeat] &&
-        !hitBeatsRef.current[currentBeat]
-      ) {
-        console.log(`[HIT] Beat ${currentBeat}: fingerCount=${fingerCount} matches target=${sequence[currentBeat]}`);
-        hitBeatsRef.current[currentBeat] = true;
-      }
-    }
-  }, [fingerCount, status, currentBeat, sequence]);
 
   // Handle Score Screen Reveal Logic and Sounds
   useEffect(() => {
@@ -1351,7 +1358,6 @@ const App: React.FC = () => {
         videoRef={videoRef}
         landmarksRef={landmarksRef}
         isCameraReady={isCameraReady}
-        fingerCount={fingerCount}
         showFingerVector={
           status === GameStatus.LOADING ||
           status === GameStatus.MENU

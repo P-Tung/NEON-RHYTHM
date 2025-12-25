@@ -11,8 +11,12 @@ import {
   NormalizedLandmark,
 } from "@mediapipe/tasks-vision";
 
+// Detect mobile once outside the hook
+const IS_MOBILE = typeof navigator !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
 export const useMediaPipe = (
-  videoRef: React.RefObject<HTMLVideoElement | null>
+  videoRef: React.RefObject<HTMLVideoElement | null>,
+  onCountUpdate?: (count: number) => void
 ) => {
   const [isCameraReady, setIsCameraReady] = useState(false);
   const [fingerCount, setFingerCount] = useState(0);
@@ -23,14 +27,12 @@ export const useMediaPipe = (
   const landmarksRef = useRef<NormalizedLandmark[] | null>(null);
   const lastDetectionTimeRef = useRef<number>(0);
 
-  // Detect mobile for optimizations
-  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-  // Throttling: ~20 FPS (50ms) is plenty for mobile rhythm tracking and saves massive CPU/battery
-  const DETECTION_INTERVAL = isMobile ? 50 : 16;
+  // Throttling: 30 FPS (33ms) is plenty for rhythm tracking and saves massive CPU/battery
+  const DETECTION_INTERVAL = 33;
 
   // Temporal smoothing: store recent finger counts
   const fingerHistoryRef = useRef<number[]>([]);
-  const HISTORY_SIZE = isMobile ? 3 : 5; // Smaller history for faster response on mobile
+  const HISTORY_SIZE = IS_MOBILE ? 3 : 5; // Smaller history for faster response on mobile
 
   // Get MODE (most frequent value) from array
   const getMode = (arr: number[]): number => {
@@ -47,54 +49,25 @@ export const useMediaPipe = (
     return mode;
   };
 
-  // Helper: Calculate 3D distance between two landmarks
-  const getDistance3D = (
-    a: NormalizedLandmark,
-    b: NormalizedLandmark,
-    ratio: number = 1
-  ): number => {
-    // Standardize coordinates by multiplying X and Z by the aspect ratio (W/H)
-    // This makes the distance metric consistent in "height units"
-    return Math.hypot((a.x - b.x) * ratio, a.y - b.y, (a.z - b.z) * ratio);
-  };
+// Helper: Calculate Squared 3D distance (avoids expensive Math.sqrt)
+export const getDistanceSq3D = (
+  a: NormalizedLandmark,
+  b: NormalizedLandmark,
+  ratio: number = 1
+): number => {
+  const dx = (a.x - b.x) * ratio;
+  const dy = a.y - b.y;
+  const dz = (a.z - b.z) * ratio;
+  return dx * dx + dy * dy + dz * dz;
+};
 
-  // Helper: Calculate angle at point B given points A, B, C (in degrees) using 3D coordinates
-  const getAngle = (
-    a: NormalizedLandmark,
-    b: NormalizedLandmark,
-    c: NormalizedLandmark,
-    ratio: number = 1
-  ): number => {
-    // Vectors AB and CB in standardized coordinates
-    const ab = {
-      x: (a.x - b.x) * ratio,
-      y: a.y - b.y,
-      z: (a.z - b.z) * ratio,
-    };
-    const cb = {
-      x: (c.x - b.x) * ratio,
-      y: c.y - b.y,
-      z: (c.z - b.z) * ratio,
-    };
+// ... existing getAngle ...
 
-    // Dot product in 3D
-    const dot = ab.x * cb.x + ab.y * cb.y + ab.z * cb.z;
-
-    // Magnitudes in 3D
-    const magAB = Math.hypot(ab.x, ab.y, ab.z);
-    const magCB = Math.hypot(cb.x, cb.y, cb.z);
-
-    if (magAB === 0 || magCB === 0) return 180; // Avoid division by zero
-
-    const cosAngle = Math.max(-1, Math.min(1, dot / (magAB * magCB))); // Clamp to [-1, 1]
-    return Math.acos(cosAngle) * (180 / Math.PI);
-  };
-
-  // Helper: Count extended fingers using Robust Relative Distances (Rotation Invariant)
-  const countFingers = (
-    landmarks: NormalizedLandmark[],
-    ratio: number
-  ): number => {
+// Helper: Count extended fingers using Squared Relative Distances (Rotation Invariant)
+export const countFingers = (
+  landmarks: NormalizedLandmark[],
+  ratio: number
+): number => {
     if (!landmarks || landmarks.length < 21) return 0;
 
     const wrist = landmarks[0];
@@ -103,19 +76,20 @@ export const useMediaPipe = (
 
     // --- THUMB (Points 2, 3, 4) ---
     // LOGIC: Is the thumb tip further from the pinky knuckle than the base joint?
-    // This is the most robust way to detect a "tucked" thumb.
     const thumbIP = landmarks[3];
     const thumbTip = landmarks[4];
 
-    const distTipToPinky = getDistance3D(thumbTip, PinkyMCP, ratio);
-    const distIpToPinky = getDistance3D(thumbIP, PinkyMCP, ratio);
+    const distSqTipToPinky = getDistanceSq3D(thumbTip, PinkyMCP, ratio);
+    const distSqIpToPinky = getDistanceSq3D(thumbIP, PinkyMCP, ratio);
 
     // If tip is significantly further from pinky than the inner joint, it's "out"
-    if (distTipToPinky > distIpToPinky * 1.1) {
+    // 1.1 threshold -> 1.21 for squared comparison
+    if (distSqTipToPinky > distSqIpToPinky * 1.21) {
       // Also check if it's not tucked deep into the palm
-      const distTipToWrist = getDistance3D(thumbTip, wrist, ratio);
-      const distMcpToWrist = getDistance3D(landmarks[2], wrist, ratio);
-      if (distTipToWrist > distMcpToWrist * 0.8) {
+      const distSqTipToWrist = getDistanceSq3D(thumbTip, wrist, ratio);
+      const distSqMcpToWrist = getDistanceSq3D(landmarks[2], wrist, ratio);
+      // 0.8 threshold -> 0.64 for squared comparison
+      if (distSqTipToWrist > distSqMcpToWrist * 0.64) {
         count++;
       }
     }
@@ -132,12 +106,12 @@ export const useMediaPipe = (
       const mcp = landmarks[f.mcp];
       const tip = landmarks[f.tip];
 
-      const distWristTip = getDistance3D(wrist, tip, ratio);
-      const distWristMcp = getDistance3D(wrist, mcp, ratio);
+      const distSqWristTip = getDistanceSq3D(wrist, tip, ratio);
+      const distSqWristMcp = getDistanceSq3D(wrist, mcp, ratio);
 
       // LOGIC: Is the tip significantly "out" from the knuckle?
-      // 1.35x distance is a safe "out of the fist" threshold
-      if (distWristTip > distWristMcp * 1.35) {
+      // 1.35 threshold -> 1.8225 for squared comparison
+      if (distSqWristTip > distSqWristMcp * 1.8225) {
         count++;
       }
     }
@@ -147,6 +121,12 @@ export const useMediaPipe = (
 
   useEffect(() => {
     let isActive = true;
+    let isTabVisible = true;
+
+    const handleVisibilityChange = () => {
+      isTabVisible = !document.hidden;
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     const setupMediaPipe = async () => {
       try {
@@ -159,7 +139,7 @@ export const useMediaPipe = (
         const landmarker = await HandLandmarker.createFromOptions(vision, {
           baseOptions: {
             modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`,
-            delegate: "GPU",
+            delegate: IS_MOBILE ? "CPU" : "GPU",
           },
           runningMode: "VIDEO",
           numHands: 1,
@@ -186,8 +166,9 @@ export const useMediaPipe = (
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: "user",
-            width: { ideal: isMobile ? 640 : 1280 },
-            height: { ideal: isMobile ? 480 : 720 },
+            // 480p is perfect for hand tracking and much faster than 720p/1080p
+            width: { ideal: 640 },
+            height: { ideal: 480 },
           },
         });
 
@@ -207,17 +188,17 @@ export const useMediaPipe = (
     };
 
     const predictWebcam = () => {
-      if (!videoRef.current || !landmarkerRef.current || !isActive) return;
+      if (!videoRef.current || !landmarkerRef.current || !isActive || !isTabVisible) {
+        requestRef.current = requestAnimationFrame(predictWebcam);
+        return;
+      }
 
       const video = videoRef.current;
       if (video.videoWidth > 0 && video.videoHeight > 0) {
         const startTimeMs = performance.now();
 
-        // Throttle detection on mobile to save battery and reduce heat
-        if (
-          isMobile &&
-          startTimeMs - lastDetectionTimeRef.current < DETECTION_INTERVAL
-        ) {
+        // Standardized throttling to 30 FPS for all devices
+        if (startTimeMs - lastDetectionTimeRef.current < DETECTION_INTERVAL) {
           requestRef.current = requestAnimationFrame(predictWebcam);
           return;
         }
@@ -248,15 +229,17 @@ export const useMediaPipe = (
                 : count;
 
             // PERFORMANCE: Only update state if count actually changed
-            setFingerCount((prev) =>
-              prev === smoothedCount ? prev : smoothedCount
-            );
+            if (fingerCount !== smoothedCount) {
+              setFingerCount(smoothedCount);
+              if (onCountUpdate) onCountUpdate(smoothedCount);
+            }
           } else {
             landmarksRef.current = null;
             // Clear history when no hand detected
             if (fingerCount !== 0) {
               fingerHistoryRef.current = [];
               setFingerCount(0);
+              if (onCountUpdate) onCountUpdate(0);
             }
           }
         } catch (e) {
@@ -270,6 +253,7 @@ export const useMediaPipe = (
 
     return () => {
       isActive = false;
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       if (requestRef.current) cancelAnimationFrame(requestRef.current);
       if (landmarkerRef.current) landmarkerRef.current.close();
       if (videoRef.current && videoRef.current.srcObject) {

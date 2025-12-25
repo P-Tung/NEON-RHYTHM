@@ -6,13 +6,13 @@
 import React, { useEffect, useRef } from "react";
 import { NormalizedLandmark } from "@mediapipe/tasks-vision";
 import { COLORS } from "../types";
+import { countFingers } from "../hooks/useMediaPipe";
 
 interface WebcamPreviewProps {
   videoRef: React.RefObject<HTMLVideoElement | null>;
   landmarksRef: React.MutableRefObject<NormalizedLandmark[] | null>;
   isCameraReady: boolean;
   showFingerVector?: boolean;
-  fingerCount: number;
 }
 
 const HAND_CONNECTIONS = [
@@ -133,7 +133,10 @@ const WebcamPreview: React.FC<WebcamPreviewProps> = ({
             }
 
             // Draw Finger Count above the hand
-            if (fingerCount > 0) {
+            const ratio = video.videoWidth / video.videoHeight;
+            const currentCount = countFingers(landmarks, ratio);
+
+            if (currentCount > 0) {
               // Find the topmost point of the hand
               let minY = Infinity;
               let topX = 0;
@@ -155,8 +158,8 @@ const WebcamPreview: React.FC<WebcamPreviewProps> = ({
               ctx.textBaseline = "bottom";
 
               const textY = minY - 20;
-              ctx.strokeText(fingerCount.toString(), topX, textY);
-              ctx.fillText(fingerCount.toString(), topX, textY);
+              ctx.strokeText(currentCount.toString(), topX, textY);
+              ctx.fillText(currentCount.toString(), topX, textY);
 
               // Reset shadow for the label
               ctx.shadowBlur = 0;
@@ -181,7 +184,7 @@ const WebcamPreview: React.FC<WebcamPreviewProps> = ({
     return () => {
       if (animationFrameId) cancelAnimationFrame(animationFrameId);
     };
-  }, [isCameraReady, videoRef, showFingerVector, fingerCount]);
+  }, [isCameraReady, videoRef, showFingerVector]);
 
   if (!isCameraReady) return null;
 
