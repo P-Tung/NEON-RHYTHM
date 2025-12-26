@@ -33,10 +33,16 @@ import {
 } from "./constants";
 import ShareInstructionsModal from "./components/ShareInstructionsModal";
 import { shareVideo, saveVideo, ShareTarget } from "./utils/shareUtils";
-import { Instagram, Youtube, MoreHorizontal, Download } from 'lucide-react';
+import { Instagram, Youtube, MoreHorizontal, Download } from "lucide-react";
 
 const TikTokIcon = ({ size = 24 }: { size?: number }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    xmlns="http://www.w3.org/2000/svg"
+  >
     <path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.17-2.86-.6-4.12-1.31a8.776 8.776 0 0 1-1.87-1.35v6.59c-.01 1.05-.18 2.1-.59 3.08-1.02 2.45-3.35 4.16-5.96 4.45-1.92.21-3.95-.23-5.59-1.35-2.07-1.41-3.15-4.04-2.67-6.52.33-1.74 1.41-3.37 2.97-4.21 1.4-.76 3.07-.98 4.63-.61v4.03c-.68-.14-1.4-.1-2.05.11-.84.28-1.53.94-1.84 1.75-.38.98-.18 2.19.49 2.99.7.83 1.83 1.25 2.9.11 1.01-.13 1.89-.86 2.17-1.85.19-.66.21-1.35.21-2.04V0h.01Z" />
   </svg>
 );
@@ -55,7 +61,9 @@ const App: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
-  const audioStreamDestRef = useRef<MediaStreamAudioDestinationNode | null>(null);
+  const audioStreamDestRef = useRef<MediaStreamAudioDestinationNode | null>(
+    null
+  );
   const recorderGainRef = useRef<GainNode | null>(null);
 
   // Difficulty Tracking Refs (to avoid stale closures)
@@ -109,7 +117,10 @@ const App: React.FC = () => {
     }
   }, []);
 
-  const { isCameraReady, landmarksRef } = useMediaPipe(videoRef, handleFingerCountUpdate);
+  const { isCameraReady, landmarksRef } = useMediaPipe(
+    videoRef,
+    handleFingerCountUpdate
+  );
   const {
     startRecording,
     stopRecording,
@@ -119,10 +130,13 @@ const App: React.FC = () => {
     setFailOverlay,
   } = useVideoRecorder(videoRef, audioStreamDestRef.current?.stream);
 
-  const rhythmEngine = useRhythmEngine(audioCtxRef.current, recorderGainRef.current);
+  const rhythmEngine = useRhythmEngine(
+    audioCtxRef.current,
+    recorderGainRef.current
+  );
 
   // Track Rotation State (Simplified to one track)
-  const currentPattern: MusicType = 'happy_hardcore';
+  const currentPattern: MusicType = "happy_hardcore";
 
   // Ref to track if target was hit for each beat index (prevents race conditions)
   const hitBeatsRef = useRef<boolean[]>([]);
@@ -166,7 +180,8 @@ const App: React.FC = () => {
   );
 
   // Sharing State
-  const [activeShareTarget, setActiveShareTarget] = useState<ShareTarget | null>(null);
+  const [activeShareTarget, setActiveShareTarget] =
+    useState<ShareTarget | null>(null);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [isVideoDownloaded, setIsVideoDownloaded] = useState(false);
   const [showSaveToast, setShowSaveToast] = useState(false);
@@ -326,7 +341,6 @@ const App: React.FC = () => {
     });
   }, [isMuted]);
 
-
   // Fail: Low buzzy saw wave
   const playFailSound = useCallback(() => {
     if (!audioCtxRef.current || isMuted) return;
@@ -428,7 +442,7 @@ const App: React.FC = () => {
             setRevealedResults((prev) => {
               const next = [...prev];
               if (currentIndex < next.length) {
-                next[currentIndex] = res;  // Use currentIndex, NOT i
+                next[currentIndex] = res; // Use currentIndex, NOT i
               }
               return next;
             });
@@ -667,11 +681,7 @@ const App: React.FC = () => {
   // startOffset: time in seconds to start playback from (for skipping intros)
   // startTime: absolute AudioContext time to start playback (scheduling)
   const playTrack = useCallback(
-    (
-      type: "intro" | "game",
-      startOffset: number = 0,
-      startTime?: number
-    ) => {
+    (type: "intro" | "game", startOffset: number = 0, startTime?: number) => {
       const ctx = audioCtxRef.current;
       if (!ctx) return 0;
 
@@ -679,7 +689,7 @@ const App: React.FC = () => {
       if (currentSourceRef.current) {
         try {
           currentSourceRef.current.stop();
-        } catch (e) { }
+        } catch (e) {}
         currentSourceRef.current = null;
       }
 
@@ -730,7 +740,7 @@ const App: React.FC = () => {
     if (currentSourceRef.current) {
       try {
         currentSourceRef.current.stop();
-      } catch (e) { }
+      } catch (e) {}
       currentSourceRef.current = null;
     }
     currentGainRef.current = null;
@@ -783,8 +793,6 @@ const App: React.FC = () => {
     startGame();
   }, [isAssetsReady]); // 'startGame' omitted from deps to avoid circular if not hoisted
 
-
-
   // --- GAME LOOP ---
   const startGame = async (
     forcedDifficulty?: Difficulty,
@@ -800,7 +808,9 @@ const App: React.FC = () => {
     const targetDifficulty = forcedDifficulty || difficulty;
     const length =
       lengthOverride ||
-      (isInfiniteMode ? infiniteLengthRef.current : DIFFICULTIES[targetDifficulty].length);
+      (isInfiniteMode
+        ? infiniteLengthRef.current
+        : DIFFICULTIES[targetDifficulty].length);
     const newSequence = generateSequence(targetDifficulty, length);
     setSequence(newSequence);
     setLocalResults(new Array(newSequence.length).fill(null));
@@ -817,8 +827,7 @@ const App: React.FC = () => {
     hitBeatsRef.current = new Array(newSequence.length).fill(false);
 
     const targetBPM =
-      bpmOverride ||
-      (isInfiniteMode ? infiniteBpmRef.current : 100);
+      bpmOverride || (isInfiniteMode ? infiniteBpmRef.current : 100);
 
     // Update rhythm engine BPM even if already running
     rhythmEngine.setBpm(targetBPM);
@@ -844,7 +853,7 @@ const App: React.FC = () => {
       const beatDuration = 60 / targetBPM;
       firstBeatTime = musicStartTime + 4 * beatDuration; // 4-beat lead-in
 
-      rhythmEngine.start(targetBPM, 'happy_hardcore', musicStartTime);
+      rhythmEngine.start(targetBPM, "happy_hardcore", musicStartTime);
     }
 
     // Start Video Recording immediately
@@ -880,15 +889,17 @@ const App: React.FC = () => {
     startGame(undefined, 100, 8);
   }, [isAssetsReady, startGame]);
 
-  const handleShare = async (target: ShareTarget = 'system') => {
+  const handleShare = async (target: ShareTarget = "system") => {
     if (!videoBlob) return;
 
     console.log(`[Instrument] share_clicked target: ${target}`);
     const mimeType = videoBlob.type.split(";")[0];
     const extension = mimeType.split("/")[1] || "mp4";
-    const file = new File([videoBlob], `neon-rhythm-run.${extension}`, { type: videoBlob.type });
+    const file = new File([videoBlob], `neon-rhythm-run.${extension}`, {
+      type: videoBlob.type,
+    });
 
-    if (target !== 'system') {
+    if (target !== "system") {
       console.log(`[Instrument] quickshare_${target}_clicked`);
       setActiveShareTarget(target);
       setIsShareModalOpen(true);
@@ -902,12 +913,12 @@ const App: React.FC = () => {
     }
 
     const result = await shareVideo(file, target);
-    if (result.method === 'native') {
+    if (result.method === "native") {
       console.log(`[Instrument] share_native_opened`);
     } else {
       console.log(`[Instrument] share_fallback_downloaded`);
       setIsVideoDownloaded(true);
-      setActiveShareTarget('system');
+      setActiveShareTarget("system");
       setIsShareModalOpen(true);
     }
   };
@@ -917,7 +928,9 @@ const App: React.FC = () => {
     console.log(`[Instrument] save_video_clicked`);
     const mimeType = videoBlob.type.split(";")[0];
     const extension = mimeType.split("/")[1] || "mp4";
-    const file = new File([videoBlob], `neon-rhythm-run.${extension}`, { type: videoBlob.type });
+    const file = new File([videoBlob], `neon-rhythm-run.${extension}`, {
+      type: videoBlob.type,
+    });
     saveVideo(file);
     setIsVideoDownloaded(true);
     setShowSaveToast(true);
@@ -1010,8 +1023,7 @@ const App: React.FC = () => {
         // Reduced lookahead to 0.3s for tighter scheduling control
         while (
           nextBeatToSchedule < seq.length &&
-          firstBeatTime + nextBeatToSchedule * intervalSec <
-          currentTime + 0.3
+          firstBeatTime + nextBeatToSchedule * intervalSec < currentTime + 0.3
         ) {
           const beatIdx = nextBeatToSchedule;
           const beatTime = firstBeatTime + beatIdx * intervalSec;
@@ -1021,7 +1033,11 @@ const App: React.FC = () => {
           const uiDelay = Math.max(0, (beatTime - currentTime) * 1000 - 15);
           const uiTimer = setTimeout(() => {
             if (sessionIdRef.current !== currentSessionId) return;
-            console.log(`[SYNC-UI] Beat ${beatIdx}: target=${seq[beatIdx]} @ ${beatTime.toFixed(3)}s`);
+            console.log(
+              `[SYNC-UI] Beat ${beatIdx}: target=${
+                seq[beatIdx]
+              } @ ${beatTime.toFixed(3)}s`
+            );
             setCurrentBeat(beatIdx);
           }, uiDelay);
           gameTimersRef.current.push(uiTimer);
@@ -1046,11 +1062,18 @@ const App: React.FC = () => {
                   beatFrameGroups[beatIdx][snapIdx] = frame;
 
                   if (beatFrameGroups[beatIdx].every((f) => f !== null)) {
-                    analyzeBeat(beatIdx, beatFrameGroups[beatIdx] as string[], seq[beatIdx], currentSessionId);
+                    analyzeBeat(
+                      beatIdx,
+                      beatFrameGroups[beatIdx] as string[],
+                      seq[beatIdx],
+                      currentSessionId
+                    );
                   }
                 }
               } else {
-                aiDetectedCountsRef.current[beatIdx] = beatLocalCounts[beatIdx] as number[];
+                aiDetectedCountsRef.current[beatIdx] = beatLocalCounts[
+                  beatIdx
+                ] as number[];
               }
             }, snapDelay);
             gameTimersRef.current.push(snapTimer);
@@ -1060,18 +1083,22 @@ const App: React.FC = () => {
         }
 
         // 2. JUDGE BEATS
-        // Widen window for mobile (95% instead of 85%) to account for detection lag
-        const judgeOffsetSec = intervalSec * (isMobile ? 0.95 : 0.85);
+        // Judgement happens slightly earlier (80%) to catch the pose before user transitions
+        // and REPLACES 'latching' with 'holding' requirement to avoid "too forgiving" feedback.
+        const judgeOffsetSec = intervalSec * 0.8;
         while (
           nextJudgementBeat < seq.length &&
-          firstBeatTime + nextJudgementBeat * intervalSec + judgeOffsetSec < currentTime
+          firstBeatTime + nextJudgementBeat * intervalSec + judgeOffsetSec <
+            currentTime
         ) {
           const beatIdx = nextJudgementBeat;
-          // PERMISSIVE MODE: Check if they hit it AT ANY POINT during the beat window.
-          // This is essential because webcams/CV can drop frames or flicker.
-          const isHit = hitBeatsRef.current[beatIdx] || (fingerCountRef.current === seq[beatIdx]);
+          // STRICT MODE: Removed hasHitCurrentBeatRef latching.
+          // User MUST be holding the correct number at the moment of judgment.
+          const isHit = fingerCountRef.current === seq[beatIdx];
 
-          console.log(`[SYNC-JUDGE] Beat ${beatIdx}: isHit=${isHit} (target ${seq[beatIdx]}, ref ${fingerCountRef.current})`);
+          console.log(
+            `[SYNC-JUDGE] Beat ${beatIdx}: isHit=${isHit} (target ${seq[beatIdx]}, ref ${fingerCountRef.current})`
+          );
 
           results[beatIdx] = isHit;
           setLocalResults([...results]);
@@ -1084,7 +1111,10 @@ const App: React.FC = () => {
           if (!isHit) {
             playFailSound();
             if (isInfiniteMode) {
-              gameTimersRef.current.forEach((id) => { clearTimeout(id as any); clearInterval(id as any); });
+              gameTimersRef.current.forEach((id) => {
+                clearTimeout(id as any);
+                clearInterval(id as any);
+              });
               gameTimersRef.current = [];
               setRevealedResults([...results]);
               setRobotState("sad");
@@ -1127,13 +1157,14 @@ const App: React.FC = () => {
                   startGame(undefined, nextBpm, nextLength);
                 }, 3000);
                 gameTimersRef.current.push(startTimer);
-
               }, 1500);
               gameTimersRef.current.push(transitionTimer);
               return;
             }
             setTimeout(() => {
-              const flattened = beatFrameGroups.flat().filter(f => f !== null) as string[];
+              const flattened = beatFrameGroups
+                .flat()
+                .filter((f) => f !== null) as string[];
               setCapturedFrames(flattened);
               analyzeGame(seq, results, currentSessionId);
             }, 500);
@@ -1342,11 +1373,9 @@ const App: React.FC = () => {
       <video
         ref={videoRef}
         className="absolute inset-0 w-full h-full object-cover scale-x-[-1]"
-        style={
-          {
-            opacity: videoOpacity,
-          }
-        }
+        style={{
+          opacity: videoOpacity,
+        }}
         playsInline
         muted
         autoPlay
@@ -1358,14 +1387,9 @@ const App: React.FC = () => {
         landmarksRef={landmarksRef}
         isCameraReady={isCameraReady}
         showFingerVector={
-          status === GameStatus.LOADING ||
-          status === GameStatus.MENU
+          status === GameStatus.LOADING || status === GameStatus.MENU
         }
       />
-
-
-
-
 
       {/* Minimal Overlay Shadow (Top only for visibility) */}
       <div className="absolute top-0 left-0 right-0 h-32 bg-gradient-to-b from-black/40 to-transparent pointer-events-none z-10" />
@@ -1415,7 +1439,9 @@ const App: React.FC = () => {
         )}
 
         {/* --- PLAYING / ANALYZING / TRANSITION STATE --- */}
-        {(status === GameStatus.PLAYING || status === GameStatus.ANALYZING || status === GameStatus.TRANSITION) && (
+        {(status === GameStatus.PLAYING ||
+          status === GameStatus.ANALYZING ||
+          status === GameStatus.TRANSITION) && (
           <div className="w-full h-full flex flex-col justify-between py-6 md:py-12">
             {/* Top Center Round Info - Hidden during Transition as we show a bigger one */}
             {status !== GameStatus.TRANSITION && (
@@ -1439,7 +1465,8 @@ const App: React.FC = () => {
                 <div className="flex items-center gap-3 mt-3 px-4 py-1.5 bg-white/10 backdrop-blur-xl rounded-full border border-white/20 shadow-2xl">
                   <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse shadow-[0_0_10px_rgba(239,68,68,0.8)]" />
                   <span className="text-[10px] md:text-xs font-black text-white/90 uppercase tracking-[0.25em]">
-                    {currentBpm} BPM | {currentPattern ? PATTERNS[currentPattern].name : ''}
+                    {currentBpm} BPM |{" "}
+                    {currentPattern ? PATTERNS[currentPattern].name : ""}
                   </span>
                 </div>
               </div>
@@ -1450,23 +1477,43 @@ const App: React.FC = () => {
             {status === GameStatus.TRANSITION && (
               <div className="absolute inset-0 z-[60] flex flex-col items-center justify-center bg-black/40 backdrop-blur-sm animate-fade-in-fast">
                 <div className="flex flex-col items-center gap-2">
-                  <div className="text-4xl md:text-6xl font-black text-white/80 uppercase tracking-widest animate-slide-in-top opacity-0"
-                    style={{ animationDelay: '0.1s', animationFillMode: 'forwards' }}>
+                  <div
+                    className="text-4xl md:text-6xl font-black text-white/80 uppercase tracking-widest animate-slide-in-top opacity-0"
+                    style={{
+                      animationDelay: "0.1s",
+                      animationFillMode: "forwards",
+                    }}
+                  >
                     NEXT UP
                   </div>
-                  <div className="text-[8rem] md:text-[12rem] font-black text-white drop-shadow-[0_0_50px_rgba(255,255,255,0.6)] italic tracking-tighter leading-none animate-zoom-in-pop opacity-0"
-                    style={{ animationDelay: '0.3s', animationFillMode: 'forwards' }}>
+                  <div
+                    className="text-[8rem] md:text-[12rem] font-black text-white drop-shadow-[0_0_50px_rgba(255,255,255,0.6)] italic tracking-tighter leading-none animate-zoom-in-pop opacity-0"
+                    style={{
+                      animationDelay: "0.3s",
+                      animationFillMode: "forwards",
+                    }}
+                  >
                     ROUND {currentRound}
                   </div>
                   <div className="relative mt-4">
                     <div className="absolute -inset-4 bg-red-500/20 blur-xl rounded-full animate-pulse"></div>
-                    <div className="relative text-6xl md:text-8xl font-black text-red-500 drop-shadow-[0_0_20px_rgba(239,68,68,1)] tracking-widest animate-slide-in-bottom opacity-0"
-                      style={{ animationDelay: '0.5s', animationFillMode: 'forwards' }}>
+                    <div
+                      className="relative text-6xl md:text-8xl font-black text-red-500 drop-shadow-[0_0_20px_rgba(239,68,68,1)] tracking-widest animate-slide-in-bottom opacity-0"
+                      style={{
+                        animationDelay: "0.5s",
+                        animationFillMode: "forwards",
+                      }}
+                    >
                       {currentBpm} BPM
                     </div>
                   </div>
-                  <div className="mt-8 text-xl text-white/60 font-bold tracking-[0.5em] animate-bounce animate-fade-in-delayed opacity-0"
-                    style={{ animationDelay: '0.7s', animationFillMode: 'forwards' }}>
+                  <div
+                    className="mt-8 text-xl text-white/60 font-bold tracking-[0.5em] animate-bounce animate-fade-in-delayed opacity-0"
+                    style={{
+                      animationDelay: "0.7s",
+                      animationFillMode: "forwards",
+                    }}
+                  >
                     SPEED INCREASING...
                   </div>
                 </div>
@@ -1488,7 +1535,8 @@ const App: React.FC = () => {
             {/* Center Stage - Glass Bar Below */}
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center w-full z-40 pointer-events-none">
               {/* Active Sequence */}
-              {(status === GameStatus.PLAYING || status === GameStatus.TRANSITION) && (
+              {(status === GameStatus.PLAYING ||
+                status === GameStatus.TRANSITION) && (
                 <div className="flex flex-col items-center w-full">
                   {/* MAIN SEQUENCE */}
                   <SequenceDisplay
@@ -1500,16 +1548,17 @@ const App: React.FC = () => {
               )}
 
               {/* Robot Analysis */}
-              {status === GameStatus.ANALYZING && !localResults.some(r => r === false) && (
-                <div className="flex flex-col items-center gap-4 md:gap-6 animate-pop px-4">
-                  <h2 className="text-2xl md:text-4xl font-black uppercase text-glow animate-pulse">
-                    ANALYZING...
-                  </h2>
-                  <p className="text-white/60 text-xs md:text-sm text-center">
-                    The AI Judge is watching your moves
-                  </p>
-                </div>
-              )}
+              {status === GameStatus.ANALYZING &&
+                !localResults.some((r) => r === false) && (
+                  <div className="flex flex-col items-center gap-4 md:gap-6 animate-pop px-4">
+                    <h2 className="text-2xl md:text-4xl font-black uppercase text-glow animate-pulse">
+                      ANALYZING...
+                    </h2>
+                    <p className="text-white/60 text-xs md:text-sm text-center">
+                      The AI Judge is watching your moves
+                    </p>
+                  </div>
+                )}
             </div>
           </div>
         )}
@@ -1527,8 +1576,10 @@ const App: React.FC = () => {
               ).length;
               const isFinished =
                 (revealedResults.length > 0 &&
-                  revealedResults.every((r) => r != null)) || (isInfiniteMode && revealedResults.some(r => r === false));
-              const isPerfect = isFinished && currentCorrect === sequence.length;
+                  revealedResults.every((r) => r != null)) ||
+                (isInfiniteMode && revealedResults.some((r) => r === false));
+              const isPerfect =
+                isFinished && currentCorrect === sequence.length;
               const hideForInfiniteFail = isInfiniteMode && !isPerfect;
 
               if (!isFinished && !hideForInfiniteFail) {
@@ -1555,9 +1606,9 @@ const App: React.FC = () => {
                   <div
                     className="flex flex-col items-center animate-slide-up-pop w-full"
                     style={{
-                      animationDelay: hideForInfiniteFail ? '0.7s' : '0s',
+                      animationDelay: hideForInfiniteFail ? "0.7s" : "0s",
                       opacity: 0,
-                      animationFillMode: 'forwards'
+                      animationFillMode: "forwards",
                     }}
                   >
                     {!isInfiniteMode && <Robot state={robotState} />}
@@ -1565,15 +1616,19 @@ const App: React.FC = () => {
                       <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 rounded-lg blur opacity-30 group-hover:opacity-50 transition duration-1000 group-hover:duration-200 animate-tilt"></div>
                       <div className="relative px-4 py-3 md:px-8 md:py-4 bg-gradient-to-r from-blue-600/50 via-purple-600/50 to-pink-600/50 backdrop-blur-lg rounded-2xl border border-white/20 shadow-2xl flex flex-col md:flex-row items-center justify-center gap-1 md:gap-6">
                         <span className="text-2xl md:text-5xl font-black italic text-transparent bg-clip-text bg-gradient-to-r from-blue-100 to-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] uppercase tracking-tighter">
-                          {hideForInfiniteFail ? "GAME OVER" : `ROUND ${currentRound}`}
+                          {hideForInfiniteFail
+                            ? "GAME OVER"
+                            : `ROUND ${currentRound}`}
                         </span>
-                        <div className="hidden md:block text-white/30 text-2xl md:text-4xl font-light">|</div>
+                        <div className="hidden md:block text-white/30 text-2xl md:text-4xl font-light">
+                          |
+                        </div>
                         <span className="text-sm md:text-3xl font-bold text-white/90 uppercase tracking-[0.1em]">
                           {hideForInfiniteFail
                             ? `MADE IT TO ROUND ${currentRound}`
                             : isPerfect
-                              ? "COMPLETE"
-                              : "FAIL"}
+                            ? "COMPLETE"
+                            : "FAIL"}
                         </span>
                       </div>
                     </div>
@@ -1585,14 +1640,20 @@ const App: React.FC = () => {
                             onClick={() => {
                               if (isInfiniteMode) {
                                 // Replay the round they just lost on at current BPM
-                                startGame(undefined, infiniteBpmRef.current, infiniteLengthRef.current);
+                                startGame(
+                                  undefined,
+                                  infiniteBpmRef.current,
+                                  infiniteLengthRef.current
+                                );
                               } else {
                                 startGame();
                               }
                             }}
                             className="px-12 py-5 bg-red-600 text-white font-black uppercase tracking-widest text-xl hover:bg-red-700 active:scale-95 transition-all shadow-[0_4px_10px_rgba(0,0,0,0.5)] rounded-2xl w-full min-w-[280px]"
                           >
-                            {isInfiniteMode ? `REPLAY ROUND ${currentRound}` : "TRY AGAIN"}
+                            {isInfiniteMode
+                              ? `REPLAY ROUND ${currentRound}`
+                              : "TRY AGAIN"}
                           </button>
 
                           <button
@@ -1636,7 +1697,9 @@ const App: React.FC = () => {
                           ) : (
                             <button
                               onClick={() => {
-                                const diffs = Object.keys(DIFFICULTIES) as Difficulty[];
+                                const diffs = Object.keys(
+                                  DIFFICULTIES
+                                ) as Difficulty[];
                                 const currentIndex = diffs.indexOf(difficulty);
                                 const nextDifficulty = diffs[currentIndex + 1];
 
@@ -1650,7 +1713,9 @@ const App: React.FC = () => {
                               }}
                               className="px-12 py-5 bg-green-600 text-white font-black uppercase tracking-widest text-xl hover:bg-green-700 hover:scale-105 active:scale-95 transition-all shadow-[0_4px_10px_rgba(0,0,0,0.5)] rounded-2xl w-full min-w-[280px]"
                             >
-                              {difficulty === "NIGHTMARE" ? "FINISH" : "NEXT ROUND"}
+                              {difficulty === "NIGHTMARE"
+                                ? "FINISH"
+                                : "NEXT ROUND"}
                             </button>
                           )}
                           <button
@@ -1668,16 +1733,21 @@ const App: React.FC = () => {
                         <div className="flex flex-col items-center gap-2 w-full">
                           <button
                             disabled={isRecording || !videoBlob}
-                            onClick={() => handleShare('system')}
-                            className={`group relative px-12 py-5 rounded-2xl font-black text-xl tracking-widest transition-all shadow-[0_8px_20px_rgba(0,0,0,0.4)] w-full min-w-[280px] flex items-center justify-center gap-3 overflow-hidden ${isRecording || !videoBlob
-                              ? "bg-white/10 text-white/30 cursor-not-allowed"
-                              : "bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 text-white hover:scale-[1.02] active:scale-95"
-                              }`}
+                            onClick={() => handleShare("system")}
+                            className={`group relative px-12 py-5 rounded-2xl font-black text-xl tracking-widest transition-all shadow-[0_8px_20px_rgba(0,0,0,0.4)] w-full min-w-[280px] flex items-center justify-center gap-3 overflow-hidden ${
+                              isRecording || !videoBlob
+                                ? "bg-white/10 text-white/30 cursor-not-allowed"
+                                : "bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 text-white hover:scale-[1.02] active:scale-95"
+                            }`}
                           >
                             <span className="relative z-10">
-                              {isRecording || !videoBlob ? "PREPARING VIDEO..." : "SHARE THIS VIDEO"}
+                              {isRecording || !videoBlob
+                                ? "PREPARING VIDEO..."
+                                : "SHARE THIS VIDEO"}
                             </span>
-                            {!isRecording && videoBlob && <span className="text-2xl">🔥</span>}
+                            {!isRecording && videoBlob && (
+                              <span className="text-2xl">🔥</span>
+                            )}
                             <div className="absolute inset-0 bg-white/20 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 ease-in-out pointer-events-none" />
                           </button>
                           {status === GameStatus.RESULT && isRecording && (
@@ -1690,16 +1760,38 @@ const App: React.FC = () => {
                         {/* Quick Action Platforms Row */}
                         <div className="flex items-center gap-4">
                           {[
-                            { id: 'tiktok' as ShareTarget, icon: <TikTokIcon size={24} />, label: 'TikTok' },
-                            { id: 'instagram' as ShareTarget, icon: <Instagram size={24} />, label: 'Instagram' },
-                            { id: 'youtube' as ShareTarget, icon: <Youtube size={24} />, label: 'YouTube' },
-                            { id: 'system' as ShareTarget, icon: <MoreHorizontal size={24} />, label: 'More' }
+                            {
+                              id: "tiktok" as ShareTarget,
+                              icon: <TikTokIcon size={24} />,
+                              label: "TikTok",
+                            },
+                            {
+                              id: "instagram" as ShareTarget,
+                              icon: <Instagram size={24} />,
+                              label: "Instagram",
+                            },
+                            {
+                              id: "youtube" as ShareTarget,
+                              icon: <Youtube size={24} />,
+                              label: "YouTube",
+                            },
+                            {
+                              id: "system" as ShareTarget,
+                              icon: <MoreHorizontal size={24} />,
+                              label: "More",
+                            },
                           ].map((platform) => (
                             <button
                               key={platform.id}
                               disabled={isRecording || !videoBlob}
                               title={`Open ${platform.label}`}
-                              onClick={() => handleShare(platform.id === 'system' ? 'system' : platform.id)}
+                              onClick={() =>
+                                handleShare(
+                                  platform.id === "system"
+                                    ? "system"
+                                    : platform.id
+                                )
+                              }
                               className="flex flex-col items-center gap-2 group disabled:opacity-30 disabled:grayscale transition-all"
                             >
                               <div className="w-14 h-14 md:w-16 md:h-16 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center text-white border border-white/20 group-hover:bg-white/30 group-hover:border-white/40 transition-all group-active:scale-95 shadow-lg">
@@ -1734,7 +1826,7 @@ const App: React.FC = () => {
         <ShareInstructionsModal
           isOpen={isShareModalOpen}
           onClose={() => setIsShareModalOpen(false)}
-          target={activeShareTarget || 'system'}
+          target={activeShareTarget || "system"}
           isDownloaded={isVideoDownloaded}
           onDownload={handleSaveVideo}
         />
@@ -1745,7 +1837,6 @@ const App: React.FC = () => {
             Video saved to gallery!
           </div>
         )}
-
       </div>
     </div>
   );
