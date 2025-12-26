@@ -1495,7 +1495,7 @@ const App: React.FC = () => {
                     NEXT UP
                   </div>
                   <div
-                    className="text-[8rem] md:text-[12rem] font-black text-white drop-shadow-[0_0_50px_rgba(255,255,255,0.6)] italic tracking-tighter leading-none animate-zoom-in-pop opacity-0"
+                    className="text-6xl md:text-9xl font-black text-white drop-shadow-[0_0_50px_rgba(255,255,255,0.6)] italic tracking-tighter leading-none animate-zoom-in-pop opacity-0 px-3 whitespace-nowrap"
                     style={{
                       animationDelay: "0.3s",
                       animationFillMode: "forwards",
