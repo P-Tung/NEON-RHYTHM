@@ -135,7 +135,9 @@ const WebcamPreview: React.FC<WebcamPreviewProps> = ({
             const ratio = video.videoWidth / video.videoHeight;
             const currentCount = countFingers(landmarks, ratio);
 
-            if (currentCount > 0) {
+            // ALWAYS show the count if landmarks are present, including 0
+            // This provides feedback that a "fist" (0) is correctly detected.
+            if (landmarks && landmarks.length > 0) {
               // Find the topmost point of the hand
               let minY = Infinity;
               let topX = 0;
@@ -148,8 +150,7 @@ const WebcamPreview: React.FC<WebcamPreviewProps> = ({
               }
 
               // Draw Count Text
-              // Optimization: Remove expensive shadowBlur for mobile-first performance
-              ctx.fillStyle = "#fbbf24"; // yellow-400
+              ctx.fillStyle = currentCount === 0 ? "#ef4444" : "#fbbf24"; // Red for 0, Yellow for others
               ctx.strokeStyle = "black";
               ctx.lineWidth = 6;
               ctx.font = "900 100px Inter, system-ui, sans-serif";
@@ -165,10 +166,9 @@ const WebcamPreview: React.FC<WebcamPreviewProps> = ({
 
               // Add a small label
               ctx.font = "900 14px Inter, system-ui, sans-serif";
-              ctx.fillStyle = "#fbbf24"; // yellow-400
+              ctx.fillStyle = currentCount === 0 ? "#ef4444" : "#fbbf24";
               ctx.strokeStyle = "black";
               ctx.lineWidth = 3;
-              // Note: letterSpacing is not supported by all canvas implementations but fine to include
               (ctx as any).letterSpacing = "2px";
               ctx.strokeText("FINGERS", topX, textY - 100);
               ctx.fillText("FINGERS", topX, textY - 100);

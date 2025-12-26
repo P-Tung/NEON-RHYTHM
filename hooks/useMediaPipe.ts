@@ -73,18 +73,26 @@ export const countFingers = (
   // LOGIC: Is the thumb tip further from the pinky knuckle than the base joint?
   const thumbIP = landmarks[3];
   const thumbTip = landmarks[4];
+  const indexMCP = landmarks[5];
 
   const distSqTipToPinky = getDistanceSq3D(thumbTip, PinkyMCP, ratio);
   const distSqIpToPinky = getDistanceSq3D(thumbIP, PinkyMCP, ratio);
 
   // If tip is significantly further from pinky than the inner joint, it's "out"
-  // 1.1 threshold -> 1.21 for squared comparison
-  if (distSqTipToPinky > distSqIpToPinky * 1.21) {
+  // Increased threshold to 1.15x (1.3225 squared) for better fist detection
+  if (distSqTipToPinky > distSqIpToPinky * 1.3225) {
     // Also check if it's not tucked deep into the palm
     const distSqTipToWrist = getDistanceSq3D(thumbTip, wrist, ratio);
     const distSqMcpToWrist = getDistanceSq3D(landmarks[2], wrist, ratio);
-    // 0.8 threshold -> 0.64 for squared comparison
-    if (distSqTipToWrist > distSqMcpToWrist * 0.64) {
+
+    // And check if it's not just resting on the index finger (fist)
+    const distSqTipToIndex = getDistanceSq3D(thumbTip, indexMCP, ratio);
+    const distSqMcpToIndex = getDistanceSq3D(landmarks[2], indexMCP, ratio);
+
+    if (
+      distSqTipToWrist > distSqMcpToWrist * 0.7 && // Stricter wrist distance
+      distSqTipToIndex > distSqMcpToIndex * 1.1 // Must be away from index finger
+    ) {
       count++;
     }
   }
@@ -265,11 +273,17 @@ export const useMediaPipe = (
             }
           } else {
             landmarksRef.current = null;
-            // Clear history when no hand detected
-            if (fingerCount !== 0) {
-              fingerHistoryRef.current = [];
-              setFingerCount(0);
-              if (onCountUpdate) onCountUpdate(0);
+            // Add 0 to history even when no hand detected for temporal smoothing
+            // This prevents flicker-induced "1" counts from ruining a stable "0"
+            fingerHistoryRef.current.push(0);
+            if (fingerHistoryRef.current.length > HISTORY_SIZE) {
+              fingerHistoryRef.current.shift();
+            }
+
+            const smoothedCount = getMode(fingerHistoryRef.current);
+            if (fingerCount !== smoothedCount) {
+              setFingerCount(smoothedCount);
+              if (onCountUpdate) onCountUpdate(smoothedCount);
             }
           }
         } catch (e) {
