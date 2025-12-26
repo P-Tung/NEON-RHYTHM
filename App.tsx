@@ -122,15 +122,6 @@ const App: React.FC = () => {
     videoRef,
     handleFingerCountUpdate
   );
-  const {
-    startRecording,
-    stopRecording,
-    videoBlob,
-    isRecording,
-    setOverlayText,
-    setFailOverlay,
-  } = useVideoRecorder(videoRef, audioStreamDestRef.current?.stream);
-
   const rhythmEngine = useRhythmEngine(
     audioCtxRef.current,
     recorderGainRef.current
@@ -169,6 +160,16 @@ const App: React.FC = () => {
   const [exitingRound, setExitingRound] = useState<number | null>(null);
   const [currentBpm, setCurrentBpm] = useState(95);
   const [currentLength, setCurrentLength] = useState(8);
+
+  // Video Recorder Hook (needs currentRound and currentBpm)
+  const {
+    startRecording,
+    stopRecording,
+    videoBlob,
+    isRecording,
+    setOverlayText,
+    setFailOverlay,
+  } = useVideoRecorder(videoRef, audioStreamDestRef.current?.stream, currentRound, currentBpm);
 
   // Analysis Results (Gemini)
   const [robotState, setRobotState] = useState<RobotState>("average");

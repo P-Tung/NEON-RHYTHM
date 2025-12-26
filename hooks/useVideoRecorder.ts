@@ -10,7 +10,7 @@ export interface FailOverlayInfo {
     round: number;
 }
 
-export const useVideoRecorder = (videoRef: React.RefObject<HTMLVideoElement>, audioStream?: MediaStream | null) => {
+export const useVideoRecorder = (videoRef: React.RefObject<HTMLVideoElement>, audioStream?: MediaStream | null, currentRound?: number, currentBpm?: number) => {
     const [recorderState, setRecorderState] = useState<RecorderState>({
         isRecording: false,
         videoBlob: null,
@@ -24,6 +24,17 @@ export const useVideoRecorder = (videoRef: React.RefObject<HTMLVideoElement>, au
     const lastOverlayTextRef = useRef<string>("");
     const preSplitLinesRef = useRef<string[]>([]);
     const failInfoRef = useRef<FailOverlayInfo>({ show: false, round: 1 });
+    const currentRoundRef = useRef<number>(currentRound || 1);
+    const currentBpmRef = useRef<number>(currentBpm || 95);
+
+    // Update refs when props change
+    useEffect(() => {
+        if (currentRound !== undefined) currentRoundRef.current = currentRound;
+    }, [currentRound]);
+
+    useEffect(() => {
+        if (currentBpm !== undefined) currentBpmRef.current = currentBpm;
+    }, [currentBpm]);
 
     // Initialize canvas on mount
     useEffect(() => {
@@ -113,19 +124,59 @@ export const useVideoRecorder = (videoRef: React.RefObject<HTMLVideoElement>, au
             );
             ctx.restore();
 
-            // 3. Draw Watermark (Skip shadow on mobile)
+            // 3. Draw Top Text - "Only 1% people can do this...."
+            ctx.save();
+            if (!isMobile) {
+                ctx.shadowColor = "rgba(0,0,0,0.7)";
+                ctx.shadowBlur = 6;
+            }
+            ctx.fillStyle = "white";
+            ctx.strokeStyle = "rgba(0,0,0,0.7)";
+            ctx.lineWidth = 4;
+            const topFontSize = isMobile ? 16 : 20;
+            ctx.font = `900 ${topFontSize}px Inter, sans-serif`;
+            ctx.textAlign = "center";
+            ctx.strokeText("Only 1% people can do this...", canvas.width / 2, 32 + topFontSize);
+            ctx.fillText("Only 1% people can do this...", canvas.width / 2, 32 + topFontSize);
+            ctx.restore();
+
+            // 4. Draw Bottom Right Watermark - "FINGERRHYTHM.COM" with colors
             ctx.save();
             if (!isMobile) {
                 ctx.shadowColor = "rgba(0,0,0,0.5)";
-                ctx.shadowBlur = 10;
+                ctx.shadowBlur = 6;
             }
-            ctx.fillStyle = "rgba(255, 255, 255, 0.7)";
-            ctx.font = "900 30px Inter, sans-serif";
+            const watermarkFontSize = isMobile ? 14 : 18;
+            ctx.font = `900 ${watermarkFontSize}px Inter, sans-serif`;
             ctx.textAlign = "right";
-            ctx.fillText("NEON-RHYTHM", canvas.width - 40, canvas.height - 40);
+            
+            // Measure each part to position correctly
+            const fingerText = "FINGER";
+            const rhythmText = "RHYTHM";
+            const comText = ".COM";
+            const fingerWidth = ctx.measureText(fingerText).width;
+            const rhythmWidth = ctx.measureText(rhythmText).width;
+            const comWidth = ctx.measureText(comText).width;
+            
+            const totalWatermarkWidth = fingerWidth + rhythmWidth + comWidth;
+            const startX = canvas.width - 20 - totalWatermarkWidth;
+            const bottomY = canvas.height - 20;
+            
+            // Draw FINGER in red
+            ctx.fillStyle = "#FF3B3B";
+            ctx.textAlign = "left";
+            ctx.fillText(fingerText, startX, bottomY);
+            
+            // Draw RHYTHM in green
+            ctx.fillStyle = "#22C55E";
+            ctx.fillText(rhythmText, startX + fingerWidth, bottomY);
+            
+            // Draw .COM in red
+            ctx.fillStyle = "#FF3B3B";
+            ctx.fillText(comText, startX + fingerWidth + rhythmWidth, bottomY);
             ctx.restore();
 
-            // 4. Draw Fail Overlays
+            // 5. Draw Fail Overlays
             const failInfo = failInfoRef.current;
             if (failInfo.show) {
                 ctx.fillStyle = "rgba(0, 0, 0, 0.4)";
@@ -157,7 +208,7 @@ export const useVideoRecorder = (videoRef: React.RefObject<HTMLVideoElement>, au
                 ctx.fillText(`GAME OVER | ROUND ${failInfo.round}`, canvas.width / 2, barY);
             }
 
-            // 5. Draw Game Overlay Text (Pre-split)
+            // 6. Draw Game Overlay Text - Round info + sequence centered in middle
             const lines = preSplitLinesRef.current;
             if (lines.length > 0 && !failInfo.show) {
                 ctx.save();
@@ -169,30 +220,84 @@ export const useVideoRecorder = (videoRef: React.RefObject<HTMLVideoElement>, au
                 ctx.strokeStyle = "rgba(0,0,0,0.7)";
                 ctx.fillStyle = "white";
 
-                const fontSize = isMobile ? 40 : 50;
-                ctx.font = `900 ${fontSize}px Inter, sans-serif`;
+                const roundFontSize = isMobile ? 18 : 24;
+                const seqFontSize = roundFontSize; // Same as round text
                 ctx.textAlign = "center";
 
-                const lineHeight = fontSize * 1.4;
-                lines.forEach((line, i) => {
-                    const y = canvas.height - 200 - (lines.length - 1 - i) * lineHeight;
+                // Find the sequence line (contains numbers with spaces or brackets, but NOT "ROUND" lines)
+                const sequenceLine = lines.find(line => 
+                    !line.startsWith("ROUND") && 
+                    /\d/.test(line) && 
+                    (line.includes(" ") || line.includes("[["))
+                );
+                
+                // Calculate layout
+                const maxWidth = canvas.width - 40; // 20px padding on each side
+                const wrappedSeqLines: string[] = [];
+                
+                if (sequenceLine) {
+                    ctx.font = `900 ${seqFontSize}px Inter, sans-serif`;
+                    // Convert spaces to dashes for display (e.g., "1 2 [[3]] 4" -> "1-2-[[3]]-4")
+                    const sequenceWithDashes = sequenceLine.replace(/ /g, "-");
+                    // Split by dash but keep the dash in display
+                    const sequenceItems = sequenceWithDashes.split("-");
+                    let currentLine = "";
+                    
+                    for (let i = 0; i < sequenceItems.length; i++) {
+                        const item = sequenceItems[i];
+                        const separator = i > 0 ? "-" : "";
+                        const testLine = currentLine ? `${currentLine}${separator}${item}` : item;
+                        const cleanTest = testLine.replace(/\[\[|\]\]/g, "");
+                        if (ctx.measureText(cleanTest).width > maxWidth && currentLine) {
+                            wrappedSeqLines.push(currentLine);
+                            currentLine = item;
+                        } else {
+                            currentLine = testLine;
+                        }
+                    }
+                    if (currentLine) wrappedSeqLines.push(currentLine);
+                }
+
+                // Calculate total height: round line + gap + sequence lines
+                const roundLineHeight = roundFontSize * 1.3;
+                const seqLineHeight = seqFontSize * 1.5;
+                const gapBetween = 20;
+                const totalHeight = roundLineHeight + gapBetween + (wrappedSeqLines.length * seqLineHeight);
+                const startY = (canvas.height - totalHeight) / 2;
+
+                // Draw Round + BPM line
+                ctx.font = `900 ${roundFontSize}px Inter, sans-serif`;
+                ctx.fillStyle = "white";
+                const roundText = `ROUND ${currentRoundRef.current} - ${currentBpmRef.current}bpm`;
+                ctx.strokeText(roundText, canvas.width / 2, startY + roundFontSize);
+                ctx.fillText(roundText, canvas.width / 2, startY + roundFontSize);
+
+                // Draw sequence lines below
+                ctx.font = `900 ${seqFontSize}px Inter, sans-serif`;
+                const seqStartY = startY + roundLineHeight + gapBetween + seqFontSize / 2;
+
+                wrappedSeqLines.forEach((line, lineIndex) => {
+                    const y = seqStartY + lineIndex * seqLineHeight;
                     const x = canvas.width / 2;
 
                     if (line.includes("[[") && line.includes("]]")) {
+                        // Split by brackets but keep the bracket content
                         const segments = line.split(/(\[\[.*?\]\])/g);
                         const cleanLine = line.replace(/\[\[|\]\]/g, "");
-                        const totalWidth = ctx.measureText(cleanLine).width;
-                        let currentX = x - totalWidth / 2;
+                        const lineWidth = ctx.measureText(cleanLine).width;
+                        let currentX = x - lineWidth / 2;
 
                         segments.forEach((segment) => {
                             if (!segment) return;
                             if (segment.startsWith("[[") && segment.endsWith("]]")) {
+                                // Highlighted number (current beat)
                                 const text = segment.slice(2, -2);
                                 ctx.fillStyle = "#FACC15";
                                 ctx.strokeText(text, currentX + ctx.measureText(text).width / 2, y);
                                 ctx.fillText(text, currentX + ctx.measureText(text).width / 2, y);
                                 currentX += ctx.measureText(text).width;
                             } else {
+                                // Normal text (numbers and dashes)
                                 ctx.fillStyle = "white";
                                 ctx.strokeText(segment, currentX + ctx.measureText(segment).width / 2, y);
                                 ctx.fillText(segment, currentX + ctx.measureText(segment).width / 2, y);
