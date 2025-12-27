@@ -84,6 +84,7 @@ const App: React.FC = () => {
   const rafIdRef = useRef<number | null>(null);
   const gameIdRef = useRef(0);
   const sessionIdRef = useRef(0);
+  const stopRecordingTimeoutRef = useRef<number | null>(null);
 
   // Tracking
   const [status, setStatus] = useState<GameStatus>(GameStatus.LOADING);
@@ -169,7 +170,12 @@ const App: React.FC = () => {
     isRecording,
     setOverlayText,
     setFailOverlay,
-  } = useVideoRecorder(videoRef, audioStreamDestRef.current?.stream, currentRound, currentBpm);
+  } = useVideoRecorder(
+    videoRef,
+    audioStreamDestRef.current?.stream,
+    currentRound,
+    currentBpm
+  );
 
   // Analysis Results (Gemini)
   const [robotState, setRobotState] = useState<RobotState>("average");
@@ -227,21 +233,38 @@ const App: React.FC = () => {
     const isGameOver = isFinished && !isPerfect;
 
     // Stop recording on Game Over (with 5s delay to capture fail reaction) or if we return to the main loading/start screen
-    const shouldStopImmediately =
-      (status === GameStatus.LOADING && isRecording);
-    
-    const shouldStopWithDelay =
-      (status === GameStatus.RESULT && isGameOver);
+    const shouldStopImmediately = status === GameStatus.LOADING && isRecording;
 
-    if (shouldStopImmediately && isRecording) {
+    const shouldStopWithDelay =
+      status === GameStatus.RESULT && isGameOver && isRecording;
+
+    if (shouldStopImmediately) {
+      // Clear any pending timeout
+      if (stopRecordingTimeoutRef.current !== null) {
+        clearTimeout(stopRecordingTimeoutRef.current);
+        stopRecordingTimeoutRef.current = null;
+      }
       stopRecording();
-    } else if (shouldStopWithDelay && isRecording) {
+    } else if (shouldStopWithDelay) {
+      // Clear any existing timeout first
+      if (stopRecordingTimeoutRef.current !== null) {
+        clearTimeout(stopRecordingTimeoutRef.current);
+      }
+
       // Delay 5 seconds to capture user's fail reaction
       const timeoutId = setTimeout(() => {
         stopRecording();
+        stopRecordingTimeoutRef.current = null;
       }, 5000);
-      
-      return () => clearTimeout(timeoutId);
+
+      stopRecordingTimeoutRef.current = timeoutId as any;
+
+      return () => {
+        clearTimeout(timeoutId);
+        if (stopRecordingTimeoutRef.current === (timeoutId as any)) {
+          stopRecordingTimeoutRef.current = null;
+        }
+      };
     }
   }, [
     status,
@@ -819,6 +842,17 @@ const App: React.FC = () => {
 
     cleanupTempData(); // Clear memory/timers from previous rounds
 
+    // Stop any existing recording before starting a new session
+    // This ensures we don't have overlapping recordings
+    if (isRecording) {
+      // Clear the delayed stop timeout if it exists
+      if (stopRecordingTimeoutRef.current !== null) {
+        clearTimeout(stopRecordingTimeoutRef.current);
+        stopRecordingTimeoutRef.current = null;
+      }
+      await stopRecording();
+    }
+
     // Clear fail overlay at the start of each game/round
     setFailOverlay({ show: false, round: currentRoundRef.current });
 
@@ -1103,7 +1137,7 @@ const App: React.FC = () => {
         // 2. JUDGE BEATS
         // Judgement happens slightly earlier (80%) to catch the pose before user transitions
         // and REPLACES 'latching' with 'holding' requirement to avoid "too forgiving" feedback.
-        const judgeOffsetSec = intervalSec * 0.90;
+        const judgeOffsetSec = intervalSec * 0.9;
         while (
           nextJudgementBeat < seq.length &&
           firstBeatTime + nextJudgementBeat * intervalSec + judgeOffsetSec <
@@ -1111,9 +1145,11 @@ const App: React.FC = () => {
         ) {
           const beatIdx = nextJudgementBeat;
           // MODIFIED: Use hitBeatsRef latching for much more stable detection.
-          // This ensures that if the user hit the target AT ANY POINT during the beat, 
+          // This ensures that if the user hit the target AT ANY POINT during the beat,
           // it counts as a success, which handles MediaPipe flickering (especially for 0).
-          const isHit = hitBeatsRef.current[beatIdx] || fingerCountRef.current === seq[beatIdx];
+          const isHit =
+            hitBeatsRef.current[beatIdx] ||
+            fingerCountRef.current === seq[beatIdx];
 
           // console.log(
           //   `[SYNC-JUDGE] Beat ${beatIdx}: isHit=${isHit} (target ${seq[beatIdx]}, ref ${fingerCountRef.current}, latched ${hitBeatsRef.current[beatIdx]})`
