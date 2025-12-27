@@ -842,17 +842,6 @@ const App: React.FC = () => {
 
     cleanupTempData(); // Clear memory/timers from previous rounds
 
-    // Stop any existing recording before starting a new session
-    // This ensures we don't have overlapping recordings
-    if (isRecording) {
-      // Clear the delayed stop timeout if it exists
-      if (stopRecordingTimeoutRef.current !== null) {
-        clearTimeout(stopRecordingTimeoutRef.current);
-        stopRecordingTimeoutRef.current = null;
-      }
-      await stopRecording();
-    }
-
     // Clear fail overlay at the start of each game/round
     setFailOverlay({ show: false, round: currentRoundRef.current });
 
@@ -916,9 +905,11 @@ const App: React.FC = () => {
 
       rhythmEngine.start(targetBPM, "happy_hardcore", musicStartTime);
 
-      // Only start/reset recording on a fresh game
+      // Only start recording if not already recording
       // This keeps the recording continuous during round transitions
-      startRecording();
+      if (!isRecording) {
+        startRecording();
+      }
     }
 
     // Start countdown coordination
