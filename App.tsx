@@ -161,8 +161,12 @@ const App: React.FC = () => {
   const [exitingRound, setExitingRound] = useState<number | null>(null);
   const [currentBpm, setCurrentBpm] = useState(95);
   const [currentLength, setCurrentLength] = useState(8);
+  
+  // Video overlay state - only updates when new sequence is generated
+  const [videoOverlayRound, setVideoOverlayRound] = useState(1);
+  const [videoOverlayBpm, setVideoOverlayBpm] = useState(95);
 
-  // Video Recorder Hook (needs currentRound and currentBpm)
+  // Video Recorder Hook (uses separate overlay state that only updates with new sequence)
   const {
     startRecording,
     stopRecording,
@@ -173,8 +177,8 @@ const App: React.FC = () => {
   } = useVideoRecorder(
     videoRef,
     audioStreamDestRef.current?.stream,
-    currentRound,
-    currentBpm
+    videoOverlayRound,
+    videoOverlayBpm
   );
 
   // Analysis Results (Gemini)
@@ -203,17 +207,17 @@ const App: React.FC = () => {
       const displaySeq = sequence
         .map((num, i) => (i === currentBeat ? `[[${num}]]` : num))
         .join(" ");
-      setOverlayText(`ROUND ${currentRound}\\n${displaySeq}`);
+      setOverlayText(`ROUND ${videoOverlayRound}\\n${displaySeq}`);
     } else if (status === GameStatus.ANALYZING) {
       // Keep showing the final sequence at the end instead of "ANALYZING..."
       const displaySeq = sequence.join(" ");
-      setOverlayText(`ROUND ${currentRound}\\n${displaySeq}`);
+      setOverlayText(`ROUND ${videoOverlayRound}\\n${displaySeq}`);
     }
   }, [
     status,
     currentBeat,
     sequence,
-    currentRound,
+    videoOverlayRound,
     isRecording,
     setOverlayText,
     countdown,
@@ -881,6 +885,9 @@ const App: React.FC = () => {
       setCurrentRound(currentRoundRef.current);
       setCurrentBpm(Math.round(targetBPM));
       setCurrentLength(length);
+      // Update video overlay state when new sequence is ready
+      setVideoOverlayRound(currentRoundRef.current);
+      setVideoOverlayBpm(Math.round(targetBPM));
     }
 
     // Update rhythm engine BPM even if already running
@@ -1203,10 +1210,11 @@ const App: React.FC = () => {
                 infiniteLengthRef.current = nextLength;
                 infiniteBpmRef.current = nextBpm;
 
-                // UPDATE: Set display state immediately so TRANSITION screen shows correct values
+                // Update UI state immediately so TRANSITION screen shows correct values
                 setCurrentRound(nextRound);
                 setCurrentBpm(Math.round(nextBpm));
                 setCurrentLength(nextLength);
+                // Don't update video overlay state yet - wait until new sequence is generated
 
                 // ENTER TRANSITION STATE
                 setStatus(GameStatus.TRANSITION);
