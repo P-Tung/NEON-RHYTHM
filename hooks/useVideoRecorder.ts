@@ -238,7 +238,7 @@ export const useVideoRecorder = (videoRef: React.RefObject<HTMLVideoElement>, au
                 ctx.strokeStyle = "rgba(0,0,0,0.7)";
                 ctx.lineWidth = 4;
 
-                const roundFontSize = isMobile ? 18 : 24;
+                const roundFontSize = isMobile ? 24 : 32;
                 const seqFontSize = roundFontSize; // Same as round text
                 ctx.textAlign = "center";
 
