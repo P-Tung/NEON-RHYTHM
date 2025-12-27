@@ -255,7 +255,7 @@ const App: React.FC = () => {
       const timeoutId = setTimeout(() => {
         stopRecording();
         stopRecordingTimeoutRef.current = null;
-      }, 5000);
+      }, 3500);
 
       stopRecordingTimeoutRef.current = timeoutId as any;
 
