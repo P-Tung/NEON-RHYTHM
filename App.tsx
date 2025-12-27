@@ -199,15 +199,11 @@ const App: React.FC = () => {
     if (!isRecording) return;
 
     if (status === GameStatus.PLAYING) {
-      if (countdown !== null) {
-        setOverlayText(`ROUND ${currentRound}\\nGET READY!`);
-      } else {
-        // Create a string like "1 2 [[3]] 4 5" to show progress in the video
-        const displaySeq = sequence
-          .map((num, i) => (i === currentBeat ? `[[${num}]]` : num))
-          .join(" ");
-        setOverlayText(`ROUND ${currentRound}\\n${displaySeq}`);
-      }
+      // Create a string like "1 2 [[3]] 4 5" to show progress in the video
+      const displaySeq = sequence
+        .map((num, i) => (i === currentBeat ? `[[${num}]]` : num))
+        .join(" ");
+      setOverlayText(`ROUND ${currentRound}\\n${displaySeq}`);
     } else if (status === GameStatus.ANALYZING) {
       // Keep showing the final sequence at the end instead of "ANALYZING..."
       const displaySeq = sequence.join(" ");
@@ -880,6 +876,13 @@ const App: React.FC = () => {
     const targetBPM =
       bpmOverride || (isInfiniteMode ? infiniteBpmRef.current : 100);
 
+    // Update round and BPM display at the same time as new sequence
+    if (isInfiniteMode) {
+      setCurrentRound(currentRoundRef.current);
+      setCurrentBpm(Math.round(targetBPM));
+      setCurrentLength(length);
+    }
+
     // Update rhythm engine BPM even if already running
     rhythmEngine.setBpm(targetBPM);
 
@@ -1200,9 +1203,7 @@ const App: React.FC = () => {
                 infiniteLengthRef.current = nextLength;
                 infiniteBpmRef.current = nextBpm;
 
-                setCurrentLength(nextLength);
-                setCurrentBpm(Math.round(nextBpm));
-                setCurrentRound(nextRound);
+                // Don't update display state yet - wait until new sequence is generated in startGame()
 
                 // ENTER TRANSITION STATE
                 setStatus(GameStatus.TRANSITION);
