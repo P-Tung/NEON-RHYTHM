@@ -163,16 +163,19 @@ export const useVideoRecorder = (videoRef: React.RefObject<HTMLVideoElement>, au
             const bottomY = canvas.height - 20;
             
             // Draw FINGER in red
-            ctx.fillStyle = "#FF3B3B";
+            ctx.fillStyle = "#fff";
             ctx.textAlign = "left";
             ctx.fillText(fingerText, startX, bottomY);
             
-            // Draw RHYTHM in green
-            ctx.fillStyle = "#22C55E";
+            // Draw RHYTHM in dark gray with white stroke
+            ctx.strokeStyle = "white";
+            ctx.lineWidth = 2;
+            ctx.strokeText(rhythmText, startX + fingerWidth, bottomY);
+            ctx.fillStyle = "#262626";
             ctx.fillText(rhythmText, startX + fingerWidth, bottomY);
             
             // Draw .COM in red
-            ctx.fillStyle = "#FF3B3B";
+            ctx.fillStyle = "#fff";
             ctx.fillText(comText, startX + fingerWidth + rhythmWidth, bottomY);
             ctx.restore();
 
