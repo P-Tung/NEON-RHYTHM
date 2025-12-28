@@ -1090,6 +1090,7 @@ const App: React.FC = () => {
           }, uiDelay);
           gameTimersRef.current.push(uiTimer);
 
+          /* 
           // Schedule snapshots
           snapshotOffsetsSec.forEach((offset, snapIdx) => {
             const snapTime = beatTime + offset;
@@ -1126,6 +1127,7 @@ const App: React.FC = () => {
             }, snapDelay);
             gameTimersRef.current.push(snapTimer);
           });
+          */
 
           nextBeatToSchedule++;
         }
@@ -1216,10 +1218,10 @@ const App: React.FC = () => {
               return;
             }
             setTimeout(() => {
-              const flattened = beatFrameGroups
-                .flat()
-                .filter((f) => f !== null) as string[];
-              setCapturedFrames(flattened);
+              // const flattened = beatFrameGroups
+              //   .flat()
+              //   .filter((f) => f !== null) as string[];
+              // setCapturedFrames(flattened);
               analyzeGame(seq, results, currentSessionId);
             }, 500);
             return;
@@ -1241,6 +1243,7 @@ const App: React.FC = () => {
     // Note: cleanup logic is often handled by status changes or timers in this app
   };
 
+  /*
   const analyzeBeat = async (
     beatIdx: number,
     frames: string[],
@@ -1296,6 +1299,7 @@ const App: React.FC = () => {
       // Fail silently, analyzeGame will use local fallback for missing results
     }
   };
+  */
 
   const analyzeGame = async (
     seq: number[],
@@ -1303,109 +1307,33 @@ const App: React.FC = () => {
     sessionId: number
   ) => {
     setStatus(GameStatus.ANALYZING);
-    // playTrack('score'); // Handled by useEffect monitoring status
     setRobotState("analyzing");
 
-    // Calculate local score for fallback
+    // Calculate local score
     const localCorrectCount = localResults.filter((r) => r === true).length;
     const localScore = Math.round((localCorrectCount / seq.length) * 100);
 
-    // If LOCAL mode is selected, skip AI analysis and show results immediately
-    // If LOCAL mode is selected, show results immediately
-    if (judgementMode === "LOCAL") {
-      const isPerfect = localScore === 100;
-      const syncResults = localResults.map((r) => r === true);
+    // Skip AI analysis and show results immediately based on LOCAL tracking
+    const isPerfect = localScore === 100;
+    const syncResults = localResults.map((r) => r === true);
 
-      setRobotState("average");
-      setResultData({
-        success: isPerfect,
-        correct_count: localCorrectCount,
-        score: localScore,
-        feedback: "Local Tracking complete. Ultra-fast feedback active!",
-        detailed_results: syncResults,
-        detected_counts: aiDetectedCountsRef.current.flat(),
-      });
+    setRobotState("average");
+    setResultData({
+      success: isPerfect,
+      correct_count: localCorrectCount,
+      score: localScore,
+      feedback: isPerfect ? "Perfect rhythm!" : "Game complete.",
+      detailed_results: syncResults,
+      detected_counts: aiDetectedCountsRef.current.flat(),
+    });
 
-      // Sync results immediately
-      aiResultsRef.current = syncResults;
-      setAiResults(syncResults);
+    // Sync results immediately
+    aiResultsRef.current = syncResults;
+    setAiResults(syncResults);
+    setAiDetectedCounts([...aiDetectedCountsRef.current]);
 
-      // CRITICAL: Sync detected counts state with ref before showing results
-      setAiDetectedCounts([...aiDetectedCountsRef.current]);
-
-      // Move to result screen
-      setStatus(GameStatus.RESULT);
-      return;
-    }
-
-    // AI Mode
-    try {
-      // 1. Wait for AT LEAST ONE AI result to finish before showing result screen
-      let attempts = 0;
-      const maxAttempts = 20; // ~5 seconds max wait for the FIRST result
-      let hasOneResult = false;
-
-      while (attempts < 30) {
-        const currentCount = aiResultsRef.current.filter(
-          (r) => r !== null
-        ).length;
-
-        if (currentCount > 0 && !hasOneResult) {
-          hasOneResult = true;
-          setStatus(GameStatus.RESULT);
-        }
-
-        if (currentCount >= seq.length) break;
-        await new Promise((r) => setTimeout(r, 200));
-        attempts++;
-      }
-
-      // Session Check
-      if (sessionId !== gameIdRef.current) return;
-
-      // 2. Fill any missing AI results with local judgments (Failover)
-      const finalAiResults = [...aiResultsRef.current].slice(0, seq.length);
-      const syncedResults: boolean[] = finalAiResults.map((r, i) => {
-        if (r !== null) return r;
-        return localResults[i] === true; // local fallback
-      });
-
-      const correct_count = syncedResults.filter((r) => r === true).length;
-      const score = Math.round((correct_count / seq.length) * 100);
-      const isPerfect = score === 100;
-
-      setResultData({
-        success: isPerfect,
-        correct_count,
-        score,
-        feedback: isPerfect
-          ? "Perfect rhythm!"
-          : "AI verified your performance.",
-        detailed_results: syncedResults,
-        detected_counts: aiDetectedCountsRef.current.flat(),
-      });
-
-      // Crucial: Update aiResults state so the reveal loop can finish
-      setAiResults(syncedResults);
-      aiResultsRef.current = syncedResults;
-
-      setRobotState("average");
-      setStatus(GameStatus.RESULT);
-    } catch (error) {
-      console.error("Gemini Analysis Failed or Timeout", error);
-      const isPerfect = localScore === 100;
-      setRobotState(isPerfect ? "happy" : "sad");
-      setResultData({
-        success: isPerfect,
-        correct_count: localCorrectCount,
-        score: localScore,
-        feedback: "AI Offline. Using local judgment.",
-        detailed_results: localResults.map((r) => r === true),
-        detected_counts: aiDetectedCountsRef.current.flat(),
-      });
-      setAiResults(localResults.map((r) => r === true));
-      setStatus(GameStatus.RESULT);
-    }
+    // Move to result screen
+    setStatus(GameStatus.RESULT);
   };
 
   // --- RENDER ---
