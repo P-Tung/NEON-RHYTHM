@@ -1,6 +1,10 @@
 // Hand Detection Worker - Offloads TensorFlow.js detection from main thread
 // Uses OffscreenCanvas for GPU-accelerated detection
 
+// #region agent log
+fetch('http://127.0.0.1:7243/ingest/009f2daa-00f2-4661-b284-18865ef5561f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'handDetection.worker.ts:5',message:'Worker script start',data:{hasGlobalThis:typeof globalThis!=='undefined',hasSelf:typeof self!=='undefined',hasAtobBefore:typeof atob!=='undefined',hasGlobalThisAtobBefore:typeof globalThis.atob!=='undefined',hasSelfAtobBefore:typeof (self as any).atob!=='undefined'},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A,D,E'})}).catch(()=>{});
+// #endregion
+
 // Define atob/btoa globally BEFORE any imports or type declarations
 // TensorFlow.js checks for these during module initialization
 globalThis.atob = (base64: string): string => {
@@ -53,6 +57,24 @@ globalThis.btoa = (str: string): string => {
   return result;
 };
 
+// Also bind to self explicitly (Hypothesis D)
+(self as any).atob = globalThis.atob;
+(self as any).btoa = globalThis.btoa;
+
+// Test the polyfill with a simple base64 string (Hypothesis B)
+let atobTestResult = '';
+let atobTestError = '';
+try {
+  const testInput = 'SGVsbG8gV29ybGQ='; // "Hello World" in base64
+  atobTestResult = globalThis.atob(testInput);
+} catch (e: any) {
+  atobTestError = e.message;
+}
+
+// #region agent log
+fetch('http://127.0.0.1:7243/ingest/009f2daa-00f2-4661-b284-18865ef5561f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'handDetection.worker.ts:72',message:'Polyfills defined and tested',data:{hasAtobAfter:typeof atob!=='undefined',hasGlobalThisAtob:typeof globalThis.atob!=='undefined',hasSelfAtob:typeof (self as any).atob!=='undefined',atobType:typeof atob,globalThisAtobType:typeof globalThis.atob,selfAtobType:typeof (self as any).atob,atobSameAsGlobal:typeof atob!=='undefined'&&atob===globalThis.atob,selfAtobSameAsGlobal:(self as any).atob===globalThis.atob,atobTestResult:atobTestResult,atobTestError:atobTestError,atobWorks:!!atobTestResult&&!atobTestError},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A,B,D,E'})}).catch(()=>{});
+// #endregion
+
 declare const self: Worker & typeof globalThis;
 
 interface DetectionResult {
@@ -74,8 +96,17 @@ async function initDetector() {
     isModelLoading = true;
     console.log("[Worker] Loading TensorFlow.js model...");
 
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/009f2daa-00f2-4661-b284-18865ef5561f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'handDetection.worker.ts:93',message:'Before TF.js imports',data:{hasAtob:typeof atob!=='undefined',hasGlobalThisAtob:typeof globalThis.atob!=='undefined',hasSelfAtob:typeof (self as any).atob!=='undefined',atobIsFunction:typeof atob==='function',canCallAtob:typeof atob==='function'&&typeof globalThis.atob==='function'},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A,C,E'})}).catch(()=>{});
+    // #endregion
+
     // Dynamic imports for TensorFlow.js
     const tf = await import("@tensorflow/tfjs");
+    
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/009f2daa-00f2-4661-b284-18865ef5561f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'handDetection.worker.ts:102',message:'After tfjs import',data:{hasAtobAfterTfjs:typeof atob!=='undefined',hasGlobalThisAtobAfterTfjs:typeof globalThis.atob!=='undefined',hasSelfAtobAfterTfjs:typeof (self as any).atob!=='undefined',tfLoaded:!!tf},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A,C,E'})}).catch(()=>{});
+    // #endregion
+    
     const handPoseDetection = await import(
       /* @vite-ignore */ "@tensorflow-models/hand-pose-detection"
     );
@@ -84,6 +115,24 @@ async function initDetector() {
     await tf.setBackend("webgl");
     await tf.ready();
     console.log("[Worker] TensorFlow.js backend ready:", tf.getBackend());
+
+    // Check what TensorFlow.js env().global contains
+    const tfEnv = tf.env();
+    const tfGlobal = tfEnv.global as any;
+    
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/009f2daa-00f2-4661-b284-18865ef5561f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'handDetection.worker.ts:120',message:'Before createDetector - TF env check',data:{hasAtob:typeof atob!=='undefined',hasGlobalThisAtob:typeof globalThis.atob!=='undefined',hasSelfAtob:typeof (self as any).atob!=='undefined',hasTfEnvGlobalAtob:typeof tfGlobal?.atob!=='undefined',tfGlobalIsGlobalThis:tfGlobal===globalThis,tfGlobalIsSelf:tfGlobal===self,tfGlobalType:typeof tfGlobal,backend:tf.getBackend()},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'G'})}).catch(()=>{});
+    // #endregion
+    
+    // FIX: Set atob on TensorFlow's global object directly
+    if (tfGlobal && typeof tfGlobal.atob === 'undefined') {
+      tfGlobal.atob = globalThis.atob;
+      tfGlobal.btoa = globalThis.btoa;
+    }
+    
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/009f2daa-00f2-4661-b284-18865ef5561f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'handDetection.worker.ts:132',message:'After setting atob on TF global',data:{hasTfGlobalAtobNow:typeof tfGlobal?.atob!=='undefined',tfGlobalAtobType:typeof tfGlobal?.atob},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'G'})}).catch(()=>{});
+    // #endregion
 
     // Use TensorFlow.js runtime (not MediaPipe) - required for module workers
     const model = handPoseDetection.SupportedModels.MediaPipeHands;
@@ -96,15 +145,12 @@ async function initDetector() {
     isModelReady = true;
     isModelLoading = false;
     console.log("[Worker] TensorFlow.js detector ready");
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/009f2daa-00f2-4661-b284-18865ef5561f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'handDetection.worker.ts:95',message:'Worker detector initialized',data:{isModelReady,modelType:IS_MOBILE?'lite':'full'},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A,E'})}).catch(()=>{});
-    // #endregion
     self.postMessage({ type: "ready" });
   } catch (err: any) {
     isModelLoading = false;
     console.error("[Worker] Error initializing detector:", err);
     // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/009f2daa-00f2-4661-b284-18865ef5561f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'handDetection.worker.ts:105',message:'Worker init error',data:{errorMsg:err.message,errorStack:err.stack},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7243/ingest/009f2daa-00f2-4661-b284-18865ef5561f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'handDetection.worker.ts:134',message:'Worker init error',data:{errorMsg:err.message,errorStack:err.stack,hasAtobOnError:typeof atob!=='undefined',hasGlobalThisAtobOnError:typeof globalThis.atob!=='undefined',hasSelfAtobOnError:typeof (self as any).atob!=='undefined',atobTypeOnError:typeof atob},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A,B,C,D,E'})}).catch(()=>{});
     // #endregion
     self.postMessage({ 
       type: "error", 
