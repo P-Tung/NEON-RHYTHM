@@ -268,6 +268,54 @@ export const useHandDetection = (
       }
     };
 
+    // ============== TensorFlow.js Setup (Main Thread - Fallback) ==============
+    const setupTensorFlowMainThread = async () => {
+      try {
+        setIsModelLoading(true);
+        console.log("[Main] Loading TensorFlow.js on main thread (fallback)...");
+
+        // Dynamic imports for TensorFlow.js
+        const tf = await import("@tensorflow/tfjs");
+        const handPoseDetection = await import(
+          "@tensorflow-models/hand-pose-detection"
+        );
+
+        // Set backend to WebGL for GPU acceleration
+        await tf.setBackend("webgl");
+        await tf.ready();
+        console.log("[Main] TensorFlow.js backend ready:", tf.getBackend());
+
+        if (!isActive) return;
+
+        // Create detector with MediaPipeHands model using tfjs runtime
+        const model = handPoseDetection.SupportedModels.MediaPipeHands;
+        const detector = await handPoseDetection.createDetector(model, {
+          runtime: "tfjs",
+          modelType: IS_MOBILE ? "lite" : "full",
+          maxHands: 1,
+        });
+
+        if (!isActive) {
+          detector.dispose();
+          return;
+        }
+
+        detectorRef.current = detector;
+        activeEngineRef.current = "tensorflow";
+        isModelReadyRef.current = true;
+        setCurrentEngine("tensorflow");
+        setIsModelLoading(false);
+        console.log("[Main] TensorFlow.js detector ready (main thread)");
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/009f2daa-00f2-4661-b284-18865ef5561f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useHandDetection.ts:300',message:'Main thread TF.js ready',data:{activeEngine:'tensorflow',isModelReady:true,hasDetector:!!detector},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A,E'})}).catch(()=>{});
+        // #endregion
+      } catch (err: any) {
+        console.error("Error initializing TensorFlow.js on main thread:", err);
+        setError(`Failed to load TensorFlow.js: ${err.message}`);
+        setIsModelLoading(false);
+      }
+    };
+
     // ============== TensorFlow.js Setup (using Web Worker) ==============
     const setupTensorFlow = async () => {
       try {
@@ -275,8 +323,8 @@ export const useHandDetection = (
 
         // Check if OffscreenCanvas is supported (required for WebGL in workers)
         if (typeof OffscreenCanvas === "undefined") {
-          console.warn("OffscreenCanvas not supported, falling back to MediaPipe");
-          await setupMediaPipe();
+          console.warn("OffscreenCanvas not supported, falling back to TensorFlow.js on main thread");
+          await setupTensorFlowMainThread();
           return;
         }
 
@@ -295,6 +343,9 @@ export const useHandDetection = (
             setCurrentEngine("tensorflow");
             setIsModelLoading(false);
             console.log("[Main] TensorFlow.js worker ready");
+            // #region agent log
+            fetch('http://127.0.0.1:7243/ingest/009f2daa-00f2-4661-b284-18865ef5561f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useHandDetection.ts:348',message:'Worker ready message received',data:{activeEngine:'tensorflow',isModelReady:true,workerExists:!!workerRef.current},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A,E,F'})}).catch(()=>{});
+            // #endregion
           } else if (type === "detection") {
             const { landmarks, frameId } = payload;
             const callback = pendingDetectionsRef.current.get(frameId);
@@ -304,23 +355,25 @@ export const useHandDetection = (
             }
           } else if (type === "error") {
             console.error("[Main] Worker error:", payload.message);
+            console.warn("Falling back to TensorFlow.js on main thread (faster than MediaPipe)");
             setError(`Worker error: ${payload.message}`);
             setIsModelLoading(false);
-            // Fallback to MediaPipe on worker error
+            // Fallback to TensorFlow.js on main thread (faster than MediaPipe)
             worker.terminate();
             workerRef.current = null;
-            await setupMediaPipe();
+            await setupTensorFlowMainThread();
           }
         };
 
         worker.onerror = async (err) => {
           console.error("[Main] Worker initialization error:", err);
+          console.warn("Falling back to TensorFlow.js on main thread");
           setError("Failed to initialize detection worker");
           setIsModelLoading(false);
           worker.terminate();
           workerRef.current = null;
-          // Fallback to MediaPipe
-          await setupMediaPipe();
+          // Fallback to TensorFlow.js on main thread
+          await setupTensorFlowMainThread();
         };
 
         workerRef.current = worker;
@@ -335,9 +388,9 @@ export const useHandDetection = (
         }
       } catch (err: any) {
         console.error("Error initializing TensorFlow.js worker:", err);
-        console.warn("Falling back to MediaPipe due to TensorFlow.js error");
+        console.warn("Falling back to TensorFlow.js on main thread");
         setIsModelLoading(false);
-        await setupMediaPipe();
+        await setupTensorFlowMainThread();
       }
     };
 
@@ -510,6 +563,9 @@ export const useHandDetection = (
       try {
         let currentCount = 0;
         const ratio = video.videoWidth / video.videoHeight;
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/009f2daa-00f2-4661-b284-18865ef5561f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useHandDetection.ts:625',message:'Detection loop executing',data:{activeEngine:activeEngineRef.current,isModelReady:isModelReadyRef.current,hasWorker:!!workerRef.current,hasDetector:!!detectorRef.current},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'D,E'})}).catch(()=>{});
+        // #endregion
 
         if (activeEngineRef.current === "mediapipe") {
           const bitmap = await createImageBitmap(video, {
@@ -532,8 +588,9 @@ export const useHandDetection = (
             landmarksRef.current = null;
           }
         } else {
-          // TensorFlow.js detection via worker
+          // TensorFlow.js detection (worker or main thread)
           if (workerRef.current && isModelReadyRef.current) {
+            // Using Web Worker
             const frameId = frameIdRef.current++;
             
             // Create ImageBitmap from video frame (downscaled for performance)
@@ -577,9 +634,53 @@ export const useHandDetection = (
             } else {
               landmarksRef.current = null;
             }
+          } else if (detectorRef.current && isModelReadyRef.current) {
+            // Using TensorFlow.js on main thread (fallback)
+            // TensorFlow.js with tfjs runtime requires a canvas, not video element
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+              
+              const hands = await detectorRef.current.estimateHands(canvas, {
+                flipHorizontal: false,
+              });
+              // #region agent log
+              fetch('http://127.0.0.1:7243/ingest/009f2daa-00f2-4661-b284-18865ef5561f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useHandDetection.ts:663',message:'Main thread TF.js detection',data:{handsDetected:hands?.length||0,hasKeypoints:hands?.[0]?.keypoints?.length||0},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B,C',runId:'post-fix'})}).catch(()=>{});
+              // #endregion
+
+              if (hands && hands.length > 0) {
+                const hand = hands[0];
+                // #region agent log
+                fetch('http://127.0.0.1:7243/ingest/009f2daa-00f2-4661-b284-18865ef5561f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useHandDetection.ts:672',message:'Raw keypoints after canvas fix',data:{firstKeypoint:hand.keypoints?.[0],videoWidth:video.videoWidth,videoHeight:video.videoHeight,keypointsLength:hand.keypoints?.length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C',runId:'post-fix'})}).catch(()=>{});
+                // #endregion
+                // Convert keypoints to normalized landmarks
+                const landmarks: NormalizedLandmark[] = hand.keypoints.map(
+                  (kp: any, index: number) => ({
+                    x: kp.x / video.videoWidth,
+                    y: kp.y / video.videoHeight,
+                    z: hand.keypoints3D?.[index]?.z ?? 0,
+                  })
+                );
+
+                landmarksRef.current = landmarks;
+                lastLandmarksRef.current = landmarks;
+                currentCount = countFingers(landmarks, ratio);
+                // #region agent log
+                fetch('http://127.0.0.1:7243/ingest/009f2daa-00f2-4661-b284-18865ef5561f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useHandDetection.ts:682',message:'Finger count result',data:{fingerCount:currentCount,landmarkCount:landmarks.length,firstLandmark:landmarks[0]},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C',runId:'post-fix'})}).catch(()=>{});
+                // #endregion
+              } else {
+                landmarksRef.current = null;
+              }
+            }
           } else {
-            // Worker not ready yet, skip this frame
+            // Model not ready yet, skip this frame
             landmarksRef.current = null;
+            // #region agent log
+            fetch('http://127.0.0.1:7243/ingest/009f2daa-00f2-4661-b284-18865ef5561f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useHandDetection.ts:691',message:'Detection skipped - model not ready',data:{hasDetector:!!detectorRef.current,isModelReady:isModelReadyRef.current},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'E'})}).catch(()=>{});
+            // #endregion
           }
         }
 
