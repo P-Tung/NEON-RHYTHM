@@ -15,6 +15,7 @@ interface PlayingViewProps {
   sequence: number[];
   currentBeat: number;
   localResults: (boolean | null)[];
+  onFail: () => void;
 }
 
 const PlayingView: React.FC<PlayingViewProps> = ({
@@ -27,6 +28,7 @@ const PlayingView: React.FC<PlayingViewProps> = ({
   sequence,
   currentBeat,
   localResults,
+  onFail,
 }) => {
   if (
     status !== GameStatus.PLAYING &&
@@ -44,6 +46,7 @@ const PlayingView: React.FC<PlayingViewProps> = ({
           currentBpm={currentBpm}
           displayRound={displayRound}
           exitingRound={exitingRound}
+          onFail={onFail}
         />
       )}
 
@@ -64,6 +67,7 @@ const PlayingView: React.FC<PlayingViewProps> = ({
               sequence={sequence}
               currentBeat={currentBeat}
               countdown={countdown}
+              localResults={localResults}
             />
           </div>
         )}
