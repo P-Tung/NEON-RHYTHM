@@ -4,7 +4,7 @@
  */
 
 import React, { useRef, useState, useEffect, useCallback } from "react";
-import { useHandDetection, DetectionEngine } from "./hooks/useHandDetection";
+import { useHandDetection, DetectionEngine, GameState } from "./hooks/useHandDetection";
 import Robot from "./components/Robot";
 import BackgroundManager from "./components/BackgroundManager";
 import PlayingView from "./components/PlayingView";
@@ -97,6 +97,33 @@ const App: React.FC = () => {
 
   // Infinite Mode State (must be declared before useHandDetection for BPM)
   const [currentBpm, setCurrentBpm] = useState(95);
+  
+  // Countdown state (must be declared before getDetectionGameState)
+  const [countdown, setCountdown] = useState<number | null>(null);
+  
+  // Beat timing for adaptive detection optimization
+  const [msUntilNextBeat, setMsUntilNextBeat] = useState<number | undefined>(undefined);
+  const msUntilNextBeatRef = useRef<number | undefined>(undefined);
+  
+  // Compute game state for detection optimization
+  const getDetectionGameState = (): GameState => {
+    if (status === GameStatus.LOADING || status === GameStatus.MENU || status === GameStatus.RESULT) {
+      return "idle";
+    }
+    if (countdown !== null && countdown > 0) {
+      return "countdown";
+    }
+    if (status === GameStatus.PLAYING) {
+      // Check if we're approaching a beat (within 300ms)
+      if (msUntilNextBeatRef.current !== undefined && msUntilNextBeatRef.current < 300) {
+        return "beat_approach";
+      }
+      return "between_beats";
+    }
+    return "playing";
+  };
+  
+  const detectionGameState = getDetectionGameState();
 
   const handleFingerCountUpdate = useCallback((count: number) => {
     fingerCountRef.current = count;
@@ -118,7 +145,9 @@ const App: React.FC = () => {
     videoRef,
     detectionEngine,
     handleFingerCountUpdate,
-    currentBpm
+    currentBpm,
+    detectionGameState,
+    msUntilNextBeat
   );
   const rhythmEngine = useRhythmEngine(
     audioCtxRef.current,
@@ -137,7 +166,6 @@ const App: React.FC = () => {
 
   // Game State
   const [difficulty, setDifficulty] = useState<Difficulty>("EASY");
-  const [countdown, setCountdown] = useState<number | null>(null);
   const [scoringEngine, setScoringEngine] = useState<"local" | "ai">("local");
   const [capturedFrames, setCapturedFrames] = useState<string[]>([]);
   const [judgementMode, setJudgementMode] = useState<"LOCAL" | "AI">("LOCAL");
@@ -461,6 +489,9 @@ const App: React.FC = () => {
     aiDetectedCountsRef.current = [];
     setCurrentBeat(-1);
     hitBeatsRef.current = [];
+    // Reset beat timing for detection optimization
+    setMsUntilNextBeat(undefined);
+    msUntilNextBeatRef.current = undefined;
   }, []);
 
   // Handle Score Screen Reveal Logic and Sounds
@@ -1073,6 +1104,19 @@ const App: React.FC = () => {
         if (!ctx || sessionIdRef.current !== currentSessionId) return;
 
         const currentTime = ctx.currentTime;
+        
+        // Update msUntilNextBeat for detection optimization
+        // Calculate time until the next beat that needs to be hit
+        const nextBeatIdx = Math.max(0, nextBeatToSchedule);
+        if (nextBeatIdx < seq.length) {
+          const nextBeatTime = firstBeatTime + nextBeatIdx * intervalSec;
+          const msUntil = Math.max(0, (nextBeatTime - currentTime) * 1000);
+          msUntilNextBeatRef.current = msUntil;
+          // Only update state occasionally to avoid re-renders
+          if (Math.abs((msUntilNextBeat || 0) - msUntil) > 50) {
+            setMsUntilNextBeat(msUntil);
+          }
+        }
 
         // 1. SCHEDULE SNAPSHOTS AND UI HIGHLIGHTS
         // Reduced lookahead to 0.3s for tighter scheduling control

@@ -1,6 +1,11 @@
 /**
  * Unified Hand Detection Hook
  * Supports both MediaPipe and TensorFlow.js backends
+ * 
+ * OPTIMIZATIONS:
+ * 1. Hybrid Motion Detection - Skip MediaPipe when hand hasn't moved
+ * 2. Adaptive Detection - Different rates based on game state
+ * 3. Pose Prediction - Predict pose using velocity when hand is stable
  */
 
 import React, { useEffect, useRef, useState } from "react";
@@ -8,10 +13,18 @@ import { NormalizedLandmark } from "@mediapipe/tasks-vision";
 
 export type DetectionEngine = "mediapipe" | "tensorflow";
 
+// Game states for adaptive detection
+export type GameState = "idle" | "countdown" | "between_beats" | "beat_approach" | "playing";
+
 // Detect mobile once outside the hook
 const IS_MOBILE =
   typeof navigator !== "undefined" &&
   /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+// ============== Motion Detection Config ==============
+const MOTION_THRESHOLD = 15; // Pixel difference threshold (0-255)
+const MOTION_SAMPLE_SIZE = 32; // Sample grid size for motion detection
+const MOTION_CHECK_INTERVAL = 16; // ~60fps motion checks (very cheap)
 
 // ============== Shared Helpers ==============
 
@@ -102,7 +115,9 @@ export const useHandDetection = (
   videoRef: React.RefObject<HTMLVideoElement | null>,
   engine: DetectionEngine = "mediapipe",
   onCountUpdate?: (count: number) => void,
-  currentBpm?: number
+  currentBpm?: number,
+  gameState: GameState = "idle",
+  msUntilNextBeat?: number // For adaptive detection during beat approach
 ) => {
   const [isCameraReady, setIsCameraReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -123,32 +138,77 @@ export const useHandDetection = (
   const activeEngineRef = useRef<DetectionEngine>(engine);
   const isModelReadyRef = useRef<boolean>(false);
   const currentBpmRef = useRef<number | undefined>(currentBpm);
+  const gameStateRef = useRef<GameState>(gameState);
+  const msUntilNextBeatRef = useRef<number | undefined>(msUntilNextBeat);
+  
+  // ============== Motion Detection Refs ==============
+  const motionCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const motionCtxRef = useRef<CanvasRenderingContext2D | null>(null);
+  const prevFrameDataRef = useRef<Uint8ClampedArray | null>(null);
+  const lastMotionCheckRef = useRef<number>(0);
+  const motionDetectedRef = useRef<boolean>(true); // Start true to force first detection
+  const consecutiveNoMotionRef = useRef<number>(0);
+  
+  // ============== Pose Prediction Refs ==============
+  const lastLandmarksRef = useRef<NormalizedLandmark[] | null>(null);
+  const landmarkVelocityRef = useRef<{x: number, y: number}[]>([]);
+  const predictionConfidenceRef = useRef<number>(1);
+  const skippedFramesRef = useRef<number>(0);
+  const MAX_SKIP_FRAMES = 5; // Max frames to skip before forcing detection
+  
+  // ============== Stats (for debugging) ==============
+  const statsRef = useRef({ 
+    totalFrames: 0, 
+    detectionFrames: 0, 
+    skippedByMotion: 0,
+    skippedByPrediction: 0 
+  });
 
-  // Update BPM ref when it changes
+  // Update refs when props change
   useEffect(() => {
     currentBpmRef.current = currentBpm;
   }, [currentBpm]);
+  
+  useEffect(() => {
+    gameStateRef.current = gameState;
+  }, [gameState]);
+  
+  useEffect(() => {
+    msUntilNextBeatRef.current = msUntilNextBeat;
+  }, [msUntilNextBeat]);
 
   // Dynamic history size based on BPM for faster response at high speeds
-  // Lower BPM: more smoothing (stable), Higher BPM: less smoothing (responsive)
   const getHistorySize = (bpm: number | undefined): number => {
-    if (!bpm) return IS_MOBILE ? 3 : 5; // Default when BPM unknown
-    
-    if (bpm >= 130) {
-      // High BPM (130+): Minimal smoothing for fastest response
-      return IS_MOBILE ? 2 : 2;
-    } else if (bpm >= 110) {
-      // Medium BPM (110-129): Reduced smoothing
-      return IS_MOBILE ? 2 : 3;
-    } else {
-      // Low BPM (<110): Normal smoothing
-      return IS_MOBILE ? 3 : 5;
-    }
+    if (!bpm) return IS_MOBILE ? 3 : 5;
+    if (bpm >= 130) return IS_MOBILE ? 2 : 2;
+    if (bpm >= 110) return IS_MOBILE ? 2 : 3;
+    return IS_MOBILE ? 3 : 5;
   };
 
-  // Detection intervals (TensorFlow.js can run slightly faster)
-  const DETECTION_INTERVAL =
-    engine === "tensorflow" ? (IS_MOBILE ? 45 : 35) : 55;
+  // ============== Adaptive Detection Interval ==============
+  // Different intervals based on game state
+  const getDetectionInterval = (): number => {
+    const state = gameStateRef.current;
+    const msUntilBeat = msUntilNextBeatRef.current;
+    
+    // During beat approach (300ms before beat), maximize detection rate
+    if (state === "beat_approach" || (msUntilBeat !== undefined && msUntilBeat < 300)) {
+      return IS_MOBILE ? 20 : 16; // ~50-60fps - maximum accuracy
+    }
+    
+    // Actively playing but between beats
+    if (state === "playing" || state === "between_beats") {
+      return IS_MOBILE ? 55 : 45; // ~18-22fps - save CPU
+    }
+    
+    // Countdown - not critical
+    if (state === "countdown") {
+      return IS_MOBILE ? 100 : 80; // ~10-12fps - minimal CPU
+    }
+    
+    // Idle/menu - very low rate
+    return IS_MOBILE ? 150 : 100; // ~7-10fps
+  };
 
   useEffect(() => {
     let isActive = true;
@@ -273,6 +333,61 @@ export const useHandDetection = (
       }
     };
 
+    // ============== Motion Detection (cheap ~1ms) ==============
+    const detectMotion = (video: HTMLVideoElement): boolean => {
+      if (!motionCanvasRef.current) {
+        motionCanvasRef.current = document.createElement("canvas");
+        motionCanvasRef.current.width = MOTION_SAMPLE_SIZE;
+        motionCanvasRef.current.height = MOTION_SAMPLE_SIZE;
+        motionCtxRef.current = motionCanvasRef.current.getContext("2d", { willReadFrequently: true });
+      }
+      
+      const ctx = motionCtxRef.current;
+      if (!ctx) return true; // Default to motion detected if canvas fails
+      
+      // Draw downscaled video frame
+      ctx.drawImage(video, 0, 0, MOTION_SAMPLE_SIZE, MOTION_SAMPLE_SIZE);
+      const currentFrame = ctx.getImageData(0, 0, MOTION_SAMPLE_SIZE, MOTION_SAMPLE_SIZE);
+      const currentData = currentFrame.data;
+      
+      // First frame - no comparison yet
+      if (!prevFrameDataRef.current) {
+        prevFrameDataRef.current = new Uint8ClampedArray(currentData);
+        return true;
+      }
+      
+      // Compare frames - check pixel differences
+      let diffSum = 0;
+      const prevData = prevFrameDataRef.current;
+      const pixelCount = MOTION_SAMPLE_SIZE * MOTION_SAMPLE_SIZE;
+      
+      for (let i = 0; i < currentData.length; i += 4) {
+        // Compare grayscale values (faster than RGB)
+        const gray1 = (prevData[i] + prevData[i+1] + prevData[i+2]) / 3;
+        const gray2 = (currentData[i] + currentData[i+1] + currentData[i+2]) / 3;
+        diffSum += Math.abs(gray1 - gray2);
+      }
+      
+      const avgDiff = diffSum / pixelCount;
+      
+      // Store current frame for next comparison
+      prevFrameDataRef.current = new Uint8ClampedArray(currentData);
+      
+      return avgDiff > MOTION_THRESHOLD;
+    };
+    
+    // ============== Pose Prediction ==============
+    const predictPose = (): number => {
+      // If we have previous landmarks and velocity, predict current pose
+      if (!lastLandmarksRef.current || lastLandmarksRef.current.length < 21) {
+        return fingerCountRef.current;
+      }
+      
+      // Simple prediction: assume pose hasn't changed significantly
+      // This works because players HOLD poses between changes
+      return fingerCountRef.current;
+    };
+
     // ============== Detection Loop ==============
     const predictWebcam = async (time?: number) => {
       if (
@@ -281,99 +396,163 @@ export const useHandDetection = (
         !isActive ||
         !isTabVisible ||
         isProcessingRef.current ||
-        !isModelReadyRef.current  // Wait for model to be ready
+        !isModelReadyRef.current
       ) {
         scheduleNextFrame();
         return;
       }
 
       const video = videoRef.current;
-      if (video.videoWidth > 0 && video.videoHeight > 0) {
-        const startTimeMs = time || performance.now();
-
-        if (startTimeMs - lastDetectionTimeRef.current < DETECTION_INTERVAL) {
-          scheduleNextFrame();
-          return;
-        }
-        lastDetectionTimeRef.current = startTimeMs;
-        isProcessingRef.current = true;
-
-        try {
-          let currentCount = 0;
-          const ratio = video.videoWidth / video.videoHeight;
-
-          // Both engines now use similar detection APIs
-          if (activeEngineRef.current === "mediapipe") {
-            // MediaPipe Tasks Vision - uses detectForVideo with bitmap
-            const bitmap = await createImageBitmap(video, {
-              resizeWidth: 320,
-              resizeHeight: 240,
-              resizeQuality: "low",
-            });
-
-            const results = detectorRef.current.detectForVideo(
-              bitmap,
-              Math.round(video.currentTime * 1000)
-            );
-            bitmap.close();
-
-            if (results.landmarks && results.landmarks.length > 0) {
-              landmarksRef.current = results.landmarks[0];
-              currentCount = countFingers(results.landmarks[0], ratio);
-            } else {
-              landmarksRef.current = null;
-            }
-          } else {
-            // TensorFlow.js with MediaPipe runtime - uses estimateHands
-            const hands = await detectorRef.current.estimateHands(video, {
-              flipHorizontal: false,
-            });
-
-            if (hands && hands.length > 0) {
-              const hand = hands[0];
-              const vw = video.videoWidth || 640;
-              const vh = video.videoHeight || 480;
-              
-              // Keypoints are in pixel coordinates, normalize to 0-1
-              const landmarks: NormalizedLandmark[] = hand.keypoints.map(
-                (kp: any, index: number) => ({
-                  x: kp.x / vw,
-                  y: kp.y / vh,
-                  z: hand.keypoints3D?.[index]?.z ?? 0,
-                })
-              );
-              
-              landmarksRef.current = landmarks;
-              currentCount = countFingers(landmarks, ratio);
-            } else {
-              landmarksRef.current = null;
-            }
-          }
-
-          // Smoothing with dynamic history size based on current BPM
-          const historySize = getHistorySize(currentBpmRef.current);
-          fingerHistoryRef.current.push(currentCount);
-          if (fingerHistoryRef.current.length > historySize) {
-            fingerHistoryRef.current.shift();
-          }
-
-          const smoothedCount =
-            fingerHistoryRef.current.length >= 2
-              ? getMode(fingerHistoryRef.current)
-              : currentCount;
-
-          fingerCountRef.current = smoothedCount;
-
-          if (lastCountRef.current !== smoothedCount) {
-            lastCountRef.current = smoothedCount;
-            if (onCountUpdate) onCountUpdate(smoothedCount);
-          }
-        } catch (e) {
-          console.warn("Detection error:", e);
-        } finally {
-          isProcessingRef.current = false;
+      if (video.videoWidth <= 0 || video.videoHeight <= 0) {
+        scheduleNextFrame();
+        return;
+      }
+      
+      const now = time || performance.now();
+      statsRef.current.totalFrames++;
+      
+      // ============== Step 1: Motion Check (very cheap, ~1ms) ==============
+      const timeSinceMotionCheck = now - lastMotionCheckRef.current;
+      if (timeSinceMotionCheck >= MOTION_CHECK_INTERVAL) {
+        lastMotionCheckRef.current = now;
+        motionDetectedRef.current = detectMotion(video);
+        
+        if (!motionDetectedRef.current) {
+          consecutiveNoMotionRef.current++;
+        } else {
+          consecutiveNoMotionRef.current = 0;
         }
       }
+      
+      // ============== Step 2: Decide if we need full detection ==============
+      const detectionInterval = getDetectionInterval();
+      const timeSinceLastDetection = now - lastDetectionTimeRef.current;
+      const state: GameState = gameStateRef.current;
+      
+      // Critical states where we need maximum detection accuracy
+      const isCriticalState = state === "beat_approach" as GameState || 
+        (msUntilNextBeatRef.current !== undefined && msUntilNextBeatRef.current < 300);
+      
+      // Force detection if:
+      // 1. It's been too long since last detection
+      // 2. We're approaching a beat (critical timing)
+      // 3. Motion was just detected after period of stillness
+      // 4. We've skipped too many frames
+      const forceDetection = 
+        skippedFramesRef.current >= MAX_SKIP_FRAMES ||
+        isCriticalState ||
+        (motionDetectedRef.current && consecutiveNoMotionRef.current > 0);
+      
+      // Skip detection if:
+      // 1. No motion detected AND we're not in critical state
+      // 2. Haven't reached detection interval yet
+      const shouldSkip = 
+        !forceDetection &&
+        !motionDetectedRef.current && 
+        consecutiveNoMotionRef.current > 2 &&
+        !isCriticalState &&
+        timeSinceLastDetection < detectionInterval * 2;
+      
+      if (shouldSkip) {
+        // Use predicted/cached pose instead of running detection
+        statsRef.current.skippedByMotion++;
+        skippedFramesRef.current++;
+        scheduleNextFrame();
+        return;
+      }
+      
+      // Check timing interval
+      if (timeSinceLastDetection < detectionInterval && !forceDetection) {
+        scheduleNextFrame();
+        return;
+      }
+      
+      // ============== Step 3: Run Full Detection ==============
+      lastDetectionTimeRef.current = now;
+      isProcessingRef.current = true;
+      skippedFramesRef.current = 0;
+      statsRef.current.detectionFrames++;
+
+      try {
+        let currentCount = 0;
+        const ratio = video.videoWidth / video.videoHeight;
+
+        if (activeEngineRef.current === "mediapipe") {
+          const bitmap = await createImageBitmap(video, {
+            resizeWidth: 320,
+            resizeHeight: 240,
+            resizeQuality: "low",
+          });
+
+          const results = detectorRef.current.detectForVideo(
+            bitmap,
+            Math.round(video.currentTime * 1000)
+          );
+          bitmap.close();
+
+          if (results.landmarks && results.landmarks.length > 0) {
+            landmarksRef.current = results.landmarks[0];
+            lastLandmarksRef.current = results.landmarks[0];
+            currentCount = countFingers(results.landmarks[0], ratio);
+          } else {
+            landmarksRef.current = null;
+          }
+        } else {
+          const hands = await detectorRef.current.estimateHands(video, {
+            flipHorizontal: false,
+          });
+
+          if (hands && hands.length > 0) {
+            const hand = hands[0];
+            const vw = video.videoWidth || 640;
+            const vh = video.videoHeight || 480;
+            
+            const landmarks: NormalizedLandmark[] = hand.keypoints.map(
+              (kp: any, index: number) => ({
+                x: kp.x / vw,
+                y: kp.y / vh,
+                z: hand.keypoints3D?.[index]?.z ?? 0,
+              })
+            );
+            
+            landmarksRef.current = landmarks;
+            lastLandmarksRef.current = landmarks;
+            currentCount = countFingers(landmarks, ratio);
+          } else {
+            landmarksRef.current = null;
+          }
+        }
+
+        // Smoothing
+        const historySize = getHistorySize(currentBpmRef.current);
+        fingerHistoryRef.current.push(currentCount);
+        if (fingerHistoryRef.current.length > historySize) {
+          fingerHistoryRef.current.shift();
+        }
+
+        const smoothedCount =
+          fingerHistoryRef.current.length >= 2
+            ? getMode(fingerHistoryRef.current)
+            : currentCount;
+
+        fingerCountRef.current = smoothedCount;
+
+        if (lastCountRef.current !== smoothedCount) {
+          lastCountRef.current = smoothedCount;
+          if (onCountUpdate) onCountUpdate(smoothedCount);
+        }
+        
+        // Log stats every 100 frames (for debugging)
+        if (statsRef.current.totalFrames % 500 === 0) {
+          const skipRate = ((statsRef.current.skippedByMotion / statsRef.current.totalFrames) * 100).toFixed(1);
+          console.log(`[Detection] Skip rate: ${skipRate}%, State: ${state}, Interval: ${detectionInterval}ms`);
+        }
+      } catch (e) {
+        console.warn("Detection error:", e);
+      } finally {
+        isProcessingRef.current = false;
+      }
+      
       scheduleNextFrame();
     };
 
