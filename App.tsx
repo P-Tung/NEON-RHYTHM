@@ -95,6 +95,9 @@ const App: React.FC = () => {
   // Detection Engine Selection (must be declared before useHandDetection)
   const [detectionEngine, setDetectionEngine] = useState<DetectionEngine>("mediapipe");
 
+  // Infinite Mode State (must be declared before useHandDetection for BPM)
+  const [currentBpm, setCurrentBpm] = useState(95);
+
   const handleFingerCountUpdate = useCallback((count: number) => {
     fingerCountRef.current = count;
 
@@ -114,7 +117,8 @@ const App: React.FC = () => {
   const { isCameraReady, landmarksRef, fingerCountRef, isModelLoading, currentEngine } = useHandDetection(
     videoRef,
     detectionEngine,
-    handleFingerCountUpdate
+    handleFingerCountUpdate,
+    currentBpm
   );
   const rhythmEngine = useRhythmEngine(
     audioCtxRef.current,
@@ -152,7 +156,6 @@ const App: React.FC = () => {
   const [currentRound, setCurrentRound] = useState(1);
   const [displayRound, setDisplayRound] = useState(1);
   const [exitingRound, setExitingRound] = useState<number | null>(null);
-  const [currentBpm, setCurrentBpm] = useState(95);
   const [currentLength, setCurrentLength] = useState(8);
 
   // Video overlay state - only updates when new sequence is generated

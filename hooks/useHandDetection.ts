@@ -101,7 +101,8 @@ const getMode = (arr: number[]): number => {
 export const useHandDetection = (
   videoRef: React.RefObject<HTMLVideoElement | null>,
   engine: DetectionEngine = "mediapipe",
-  onCountUpdate?: (count: number) => void
+  onCountUpdate?: (count: number) => void,
+  currentBpm?: number
 ) => {
   const [isCameraReady, setIsCameraReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -121,8 +122,29 @@ export const useHandDetection = (
   // Track actual active engine (ref for use in detection loop)
   const activeEngineRef = useRef<DetectionEngine>(engine);
   const isModelReadyRef = useRef<boolean>(false);
+  const currentBpmRef = useRef<number | undefined>(currentBpm);
 
-  const HISTORY_SIZE = IS_MOBILE ? 3 : 5;
+  // Update BPM ref when it changes
+  useEffect(() => {
+    currentBpmRef.current = currentBpm;
+  }, [currentBpm]);
+
+  // Dynamic history size based on BPM for faster response at high speeds
+  // Lower BPM: more smoothing (stable), Higher BPM: less smoothing (responsive)
+  const getHistorySize = (bpm: number | undefined): number => {
+    if (!bpm) return IS_MOBILE ? 3 : 5; // Default when BPM unknown
+    
+    if (bpm >= 130) {
+      // High BPM (130+): Minimal smoothing for fastest response
+      return IS_MOBILE ? 2 : 2;
+    } else if (bpm >= 110) {
+      // Medium BPM (110-129): Reduced smoothing
+      return IS_MOBILE ? 2 : 3;
+    } else {
+      // Low BPM (<110): Normal smoothing
+      return IS_MOBILE ? 3 : 5;
+    }
+  };
 
   // Detection intervals (TensorFlow.js can run slightly faster)
   const DETECTION_INTERVAL =
@@ -141,7 +163,6 @@ export const useHandDetection = (
     const setupMediaPipe = async () => {
       try {
         setIsModelLoading(true);
-        console.log("MediaPipe: Loading model...");
 
         const { FilesetResolver, HandLandmarker } = await import(
           "@mediapipe/tasks-vision"
@@ -175,7 +196,6 @@ export const useHandDetection = (
         isModelReadyRef.current = true;
         setCurrentEngine("mediapipe");
         setIsModelLoading(false);
-        console.log("MediaPipe: Ready");
       } catch (err: any) {
         console.error("Error initializing MediaPipe:", err);
         setError(`Failed to load MediaPipe: ${err.message}`);
@@ -187,7 +207,6 @@ export const useHandDetection = (
     const setupTensorFlow = async () => {
       try {
         setIsModelLoading(true);
-        console.log("TensorFlow.js: Loading model with MediaPipe runtime...");
 
         // Dynamic import with @vite-ignore to skip static analysis
         let handPoseDetection: any;
@@ -221,7 +240,6 @@ export const useHandDetection = (
         isModelReadyRef.current = true;
         setCurrentEngine("tensorflow");
         setIsModelLoading(false);
-        console.log("TensorFlow.js (MediaPipe runtime): Ready");
       } catch (err: any) {
         console.error("Error initializing TensorFlow.js:", err);
         console.warn("Falling back to MediaPipe due to TensorFlow.js error");
@@ -302,7 +320,6 @@ export const useHandDetection = (
             if (results.landmarks && results.landmarks.length > 0) {
               landmarksRef.current = results.landmarks[0];
               currentCount = countFingers(results.landmarks[0], ratio);
-              console.log("MediaPipe: Finger count:", currentCount);
             } else {
               landmarksRef.current = null;
             }
@@ -328,15 +345,15 @@ export const useHandDetection = (
               
               landmarksRef.current = landmarks;
               currentCount = countFingers(landmarks, ratio);
-              console.log("TensorFlow.js: Finger count:", currentCount);
             } else {
               landmarksRef.current = null;
             }
           }
 
-          // Smoothing
+          // Smoothing with dynamic history size based on current BPM
+          const historySize = getHistorySize(currentBpmRef.current);
           fingerHistoryRef.current.push(currentCount);
-          if (fingerHistoryRef.current.length > HISTORY_SIZE) {
+          if (fingerHistoryRef.current.length > historySize) {
             fingerHistoryRef.current.shift();
           }
 
