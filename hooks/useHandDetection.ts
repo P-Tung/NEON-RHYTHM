@@ -141,6 +141,11 @@ export const useHandDetection = (
   const gameStateRef = useRef<GameState>(gameState);
   const msUntilNextBeatRef = useRef<number | undefined>(msUntilNextBeat);
   
+  // Worker refs for TensorFlow.js detection
+  const workerRef = useRef<Worker | null>(null);
+  const pendingDetectionsRef = useRef<Map<number, (landmarks: NormalizedLandmark[] | null) => void>>(new Map());
+  const frameIdRef = useRef<number>(0);
+  
   // ============== Motion Detection Refs ==============
   const motionCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const motionCtxRef = useRef<CanvasRenderingContext2D | null>(null);
@@ -263,46 +268,75 @@ export const useHandDetection = (
       }
     };
 
-    // ============== TensorFlow.js Setup (using MediaPipe runtime for same output format) ==============
+    // ============== TensorFlow.js Setup (using Web Worker) ==============
     const setupTensorFlow = async () => {
       try {
         setIsModelLoading(true);
 
-        // Dynamic import with @vite-ignore to skip static analysis
-        let handPoseDetection: any;
-        
-        try {
-          handPoseDetection = await import(/* @vite-ignore */ "@tensorflow-models/hand-pose-detection");
-        } catch (importErr) {
-          console.warn("TensorFlow.js packages not installed. Falling back to MediaPipe.");
+        // Check if OffscreenCanvas is supported (required for WebGL in workers)
+        if (typeof OffscreenCanvas === "undefined") {
+          console.warn("OffscreenCanvas not supported, falling back to MediaPipe");
           await setupMediaPipe();
           return;
         }
 
-        if (!isActive) return;
+        // Initialize worker for TensorFlow.js detection
+        const worker = new Worker(
+          new URL("./handDetection.worker.ts", import.meta.url),
+          { type: "module" }
+        );
 
-        // Use MediaPipe runtime - gives same normalized landmark format as our MediaPipe code
-        const model = handPoseDetection.SupportedModels.MediaPipeHands;
-        const detector = await handPoseDetection.createDetector(model, {
-          runtime: "mediapipe",
-          solutionPath: "https://cdn.jsdelivr.net/npm/@mediapipe/hands",
-          modelType: IS_MOBILE ? "lite" : "full",
-          maxHands: 1,
-        });
+        worker.onmessage = async (event) => {
+          const { type, payload } = event.data;
+
+          if (type === "ready") {
+            activeEngineRef.current = "tensorflow";
+            isModelReadyRef.current = true;
+            setCurrentEngine("tensorflow");
+            setIsModelLoading(false);
+            console.log("[Main] TensorFlow.js worker ready");
+          } else if (type === "detection") {
+            const { landmarks, frameId } = payload;
+            const callback = pendingDetectionsRef.current.get(frameId);
+            if (callback) {
+              callback(landmarks);
+              pendingDetectionsRef.current.delete(frameId);
+            }
+          } else if (type === "error") {
+            console.error("[Main] Worker error:", payload.message);
+            setError(`Worker error: ${payload.message}`);
+            setIsModelLoading(false);
+            // Fallback to MediaPipe on worker error
+            worker.terminate();
+            workerRef.current = null;
+            await setupMediaPipe();
+          }
+        };
+
+        worker.onerror = async (err) => {
+          console.error("[Main] Worker initialization error:", err);
+          setError("Failed to initialize detection worker");
+          setIsModelLoading(false);
+          worker.terminate();
+          workerRef.current = null;
+          // Fallback to MediaPipe
+          await setupMediaPipe();
+        };
+
+        workerRef.current = worker;
+        
+        // Initialize detector in worker
+        worker.postMessage({ type: "init" });
 
         if (!isActive) {
-          detector.dispose();
+          worker.terminate();
+          workerRef.current = null;
           return;
         }
-
-        detectorRef.current = detector;
-        activeEngineRef.current = "tensorflow";
-        isModelReadyRef.current = true;
-        setCurrentEngine("tensorflow");
-        setIsModelLoading(false);
       } catch (err: any) {
-        console.error("Error initializing TensorFlow.js:", err);
+        console.error("Error initializing TensorFlow.js worker:", err);
         console.warn("Falling back to MediaPipe due to TensorFlow.js error");
+        setIsModelLoading(false);
         await setupMediaPipe();
       }
     };
@@ -498,27 +532,53 @@ export const useHandDetection = (
             landmarksRef.current = null;
           }
         } else {
-          const hands = await detectorRef.current.estimateHands(video, {
-            flipHorizontal: false,
-          });
+          // TensorFlow.js detection via worker
+          if (workerRef.current && isModelReadyRef.current) {
+            const frameId = frameIdRef.current++;
+            
+            // Create ImageBitmap from video frame (downscaled for performance)
+            const bitmap = await createImageBitmap(video, {
+              resizeWidth: 320,
+              resizeHeight: 240,
+              resizeQuality: "low",
+            });
 
-          if (hands && hands.length > 0) {
-            const hand = hands[0];
-            const vw = video.videoWidth || 640;
-            const vh = video.videoHeight || 480;
-            
-            const landmarks: NormalizedLandmark[] = hand.keypoints.map(
-              (kp: any, index: number) => ({
-                x: kp.x / vw,
-                y: kp.y / vh,
-                z: hand.keypoints3D?.[index]?.z ?? 0,
-              })
-            );
-            
-            landmarksRef.current = landmarks;
-            lastLandmarksRef.current = landmarks;
-            currentCount = countFingers(landmarks, ratio);
+            // Send to worker for detection
+            const landmarks = await new Promise<NormalizedLandmark[] | null>((resolve) => {
+              pendingDetectionsRef.current.set(frameId, resolve);
+              
+              // Send detection request to worker
+              workerRef.current!.postMessage(
+                {
+                  type: "detect",
+                  payload: {
+                    videoBitmap: bitmap,
+                    videoWidth: 320,
+                    videoHeight: 240,
+                    frameId,
+                  },
+                },
+                [bitmap] // Transfer bitmap ownership to worker
+              );
+
+              // Timeout fallback (prevent hanging)
+              setTimeout(() => {
+                if (pendingDetectionsRef.current.has(frameId)) {
+                  pendingDetectionsRef.current.delete(frameId);
+                  resolve(null);
+                }
+              }, 1000);
+            });
+
+            if (landmarks && landmarks.length >= 21) {
+              landmarksRef.current = landmarks;
+              lastLandmarksRef.current = landmarks;
+              currentCount = countFingers(landmarks, ratio);
+            } else {
+              landmarksRef.current = null;
+            }
           } else {
+            // Worker not ready yet, skip this frame
             landmarksRef.current = null;
           }
         }
@@ -593,6 +653,16 @@ export const useHandDetection = (
         }
         detectorRef.current = null;
       }
+
+      // Cleanup worker
+      if (workerRef.current) {
+        workerRef.current.postMessage({ type: "terminate" });
+        workerRef.current.terminate();
+        workerRef.current = null;
+      }
+      
+      // Clear pending detections
+      pendingDetectionsRef.current.clear();
 
       // Cleanup camera
       if (videoRef.current) {
