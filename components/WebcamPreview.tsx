@@ -6,7 +6,7 @@
 import React, { useEffect, useRef } from "react";
 import { NormalizedLandmark } from "@mediapipe/tasks-vision";
 import { COLORS } from "../types";
-import { countFingers } from "../hooks/useMediaPipe";
+import { countFingers } from "../hooks/useHandDetection";
 
 interface WebcamPreviewProps {
   videoRef: React.RefObject<HTMLVideoElement | null>;

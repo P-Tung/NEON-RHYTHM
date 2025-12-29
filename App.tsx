@@ -4,7 +4,7 @@
  */
 
 import React, { useRef, useState, useEffect, useCallback } from "react";
-import { useMediaPipe } from "./hooks/useMediaPipe";
+import { useHandDetection, DetectionEngine } from "./hooks/useHandDetection";
 import Robot from "./components/Robot";
 import BackgroundManager from "./components/BackgroundManager";
 import PlayingView from "./components/PlayingView";
@@ -92,6 +92,9 @@ const App: React.FC = () => {
     sequenceRef.current = sequence;
   }, [status, currentBeat, sequence]);
 
+  // Detection Engine Selection (must be declared before useHandDetection)
+  const [detectionEngine, setDetectionEngine] = useState<DetectionEngine>("mediapipe");
+
   const handleFingerCountUpdate = useCallback((count: number) => {
     fingerCountRef.current = count;
 
@@ -108,8 +111,9 @@ const App: React.FC = () => {
     }
   }, []);
 
-  const { isCameraReady, landmarksRef, fingerCountRef } = useMediaPipe(
+  const { isCameraReady, landmarksRef, fingerCountRef, isModelLoading, currentEngine } = useHandDetection(
     videoRef,
+    detectionEngine,
     handleFingerCountUpdate
   );
   const rhythmEngine = useRhythmEngine(
@@ -1362,7 +1366,9 @@ const App: React.FC = () => {
         {status === GameStatus.LOADING && (
           <StartScreen
             onStart={handleStartGame}
-            isAssetsReady={isAssetsReady}
+            isAssetsReady={isAssetsReady && !isModelLoading}
+            detectionEngine={detectionEngine}
+            onEngineChange={setDetectionEngine}
           />
         )}
 
