@@ -928,21 +928,9 @@ const App: React.FC = () => {
       await ctx.resume();
     }
 
-    // 2. Start game directly, bypassing MENU state
-    setIsInfiniteMode(true);
-    setJudgementMode("LOCAL"); // Force LOCAL mode for real-time infinite play
-    setCurrentRound(1);
-    currentRoundRef.current = 1;
-    // Speed up initial difficulty
-    infiniteBpmRef.current = 100;
-    infiniteLengthRef.current = 8;
-
-    // Update State
-    setCurrentBpm(100);
-    setCurrentLength(8);
-
-    startGame(undefined, 100, 8);
-  }, [isAssetsReady, startGame]);
+    // 2. Go to MENU state to show finger detection skeleton
+    setStatus(GameStatus.MENU);
+  }, [isAssetsReady]);
 
   const handleShare = async (target: ShareTarget = "system") => {
     if (!videoBlob) return;
