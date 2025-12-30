@@ -899,13 +899,13 @@ const App: React.FC = () => {
       // SEAMLESS CONTINUATION:
       // Music is already playing.
       // Find the next bar start that gives us enough time for the countdown.
-      const minLeadIn = 3.5; // seconds (to cover 3s countdown + buffer)
+      const minLeadIn = 5.5; // seconds (to cover 5s countdown + buffer)
       firstBeatTime = rhythmEngine.getNextDownbeat(minLeadIn);
     } else {
       // START TRACK (Fresh Game):
       const musicStartTime = ctx.currentTime + 0.1;
       const beatDuration = 60 / targetBPM;
-      const minLeadIn = 3.5; // seconds
+      const minLeadIn = 5.5; // seconds
       const leadInBeats = Math.ceil(minLeadIn / beatDuration);
       firstBeatTime = musicStartTime + leadInBeats * beatDuration;
 
@@ -1008,13 +1008,15 @@ const App: React.FC = () => {
     const ctx = audioCtxRef.current;
     if (!ctx) return;
 
-    // We want 3 beeps leading up to the first beat
-    // Beep 1: firstBeatTime - 3 * beatDuration
-    // Beep 2: firstBeatTime - 2 * beatDuration
-    // Beep 3: firstBeatTime - 1 * beatDuration
+    // We want 5 beeps leading up to the first beat
+    // Beep 1: firstBeatTime - 5 * beatDuration
+    // Beep 2: firstBeatTime - 4 * beatDuration
+    // Beep 3: firstBeatTime - 3 * beatDuration
+    // Beep 4: firstBeatTime - 2 * beatDuration
+    // Beep 5: firstBeatTime - 1 * beatDuration
     // GO: firstBeatTime
 
-    [3, 2, 1, 0].forEach((count) => {
+    [5, 4, 3, 2, 1, 0].forEach((count) => {
       const beepTime = firstBeatTime - count * beatDuration;
       const delay = Math.max(0, (beepTime - ctx.currentTime) * 1000);
 
