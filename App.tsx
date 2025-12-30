@@ -488,6 +488,7 @@ const App: React.FC = () => {
     hitBeatsRef.current = [];
   }, []);
 
+
   // Handle Score Screen Reveal Logic and Sounds
   useEffect(() => {
     if (status === GameStatus.RESULT) {
@@ -809,6 +810,56 @@ const App: React.FC = () => {
     rhythmEngine.stop();
   }, [rhythmEngine]);
 
+  // Full game reset - clears EVERYTHING for fresh start
+  const resetGameCompletely = useCallback(async () => {
+    // 1. Clear all timers and RAF
+    cleanupTempData();
+
+    // 2. Clear stop recording timeout
+    if (stopRecordingTimeoutRef.current !== null) {
+      clearTimeout(stopRecordingTimeoutRef.current);
+      stopRecordingTimeoutRef.current = null;
+    }
+
+    // 3. Stop music and recording
+    stopMusic();
+    if (isRecording) {
+      await stopRecording();
+    }
+
+    // 4. Reset all game state
+    setSequence([]);
+    setCountdown(null);
+    setRobotState("average");
+    setResultData(null);
+    setShowFlash(false);
+    setFailOverlay({ show: false, round: 1 });
+
+    // 5. Reset infinite mode state to initial values
+    setCurrentRound(1);
+    currentRoundRef.current = 1;
+    setDisplayRound(1);
+    setExitingRound(null);
+    setCurrentBpm(100);
+    setCurrentLength(8);
+    infiniteBpmRef.current = 100;
+    infiniteLengthRef.current = 8;
+
+    // 6. Reset video overlay state
+    setVideoOverlayRound(1);
+    setVideoOverlayBpm(100);
+
+    // 7. Reset sharing state
+    setIsVideoDownloaded(false);
+    setShowSaveToast(false);
+    setActiveShareTarget(null);
+    setIsShareModalOpen(false);
+
+    // 8. Increment session ID to invalidate any pending async operations
+    gameIdRef.current += 1;
+    sessionIdRef.current = gameIdRef.current;
+  }, [cleanupTempData, stopMusic, isRecording, stopRecording, setFailOverlay]);
+
   // Effect to switch music based on state (except Playing, which is handled in startGame)
   useEffect(() => {
     if (!audioCtxRef.current) return;
@@ -953,21 +1004,43 @@ const App: React.FC = () => {
       await ctx.resume();
     }
 
-    // 2. Start game directly, bypassing MENU state
+    // 2. Clean up any previous game state
+    cleanupTempData();
+
+    // 3. Reset all game state for fresh start
+    setSequence([]);
+    setCountdown(null);
+    setRobotState("average");
+    setResultData(null);
+    setShowFlash(false);
+    setFailOverlay({ show: false, round: 1 });
+    setIsVideoDownloaded(false);
+    setShowSaveToast(false);
+
+    // 4. Start game directly, bypassing MENU state
     setIsInfiniteMode(true);
     setJudgementMode("LOCAL"); // Force LOCAL mode for real-time infinite play
     setCurrentRound(1);
     currentRoundRef.current = 1;
-    // Speed up initial difficulty
+    setDisplayRound(1);
+    setExitingRound(null);
+
+    // Reset to initial difficulty
     infiniteBpmRef.current = 100;
     infiniteLengthRef.current = 8;
 
     // Update State
     setCurrentBpm(100);
     setCurrentLength(8);
+    setVideoOverlayRound(1);
+    setVideoOverlayBpm(100);
+
+    // Increment session ID
+    gameIdRef.current += 1;
+    sessionIdRef.current = gameIdRef.current;
 
     startGame(undefined, 100, 8);
-  }, [isAssetsReady, startGame]);
+  }, [isAssetsReady, startGame, cleanupTempData, setFailOverlay]);
 
   const handleShare = async (target: ShareTarget = "system") => {
     if (!videoBlob) return;
@@ -1471,11 +1544,36 @@ const App: React.FC = () => {
               isVideoDownloaded={isVideoDownloaded}
               showSaveToast={showSaveToast}
               onReplay={async () => {
+                // Clear pending stop recording timeout
                 if (stopRecordingTimeoutRef.current !== null) {
                   clearTimeout(stopRecordingTimeoutRef.current);
                   stopRecordingTimeoutRef.current = null;
                 }
+
+                // Stop current recording and music
                 if (isRecording) await stopRecording();
+                stopMusic();
+
+                // Clear all timers and game state
+                cleanupTempData();
+
+                // Reset visual/UI state
+                setSequence([]);
+                setCountdown(null);
+                setRobotState("average");
+                setResultData(null);
+                setShowFlash(false);
+                setFailOverlay({ show: false, round: currentRoundRef.current });
+
+                // Reset sharing state for new recording
+                setIsVideoDownloaded(false);
+                setShowSaveToast(false);
+
+                // Increment session to invalidate pending async operations
+                gameIdRef.current += 1;
+                sessionIdRef.current = gameIdRef.current;
+
+                // Start fresh game at same round (for infinite mode)
                 if (isInfiniteMode) {
                   startGame(
                     undefined,
@@ -1486,13 +1584,15 @@ const App: React.FC = () => {
                   startGame();
                 }
               }}
-              onBackToMenu={() => {
+              onBackToMenu={async () => {
+                // Full reset - go back to start screen
+                await resetGameCompletely();
+
+                // Reset difficulty
                 setDifficulty("EASY");
                 setIsInfiniteMode(true);
-                setCurrentRound(1);
-                currentRoundRef.current = 1;
-                setCurrentBpm(100);
-                setCurrentLength(8);
+
+                // Go to loading/start screen
                 setStatus(GameStatus.LOADING);
               }}
               onNextRound={() => {
