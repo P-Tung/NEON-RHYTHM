@@ -4,7 +4,7 @@
  */
 
 import React, { useRef, useState, useEffect, useCallback } from "react";
-import { useHandDetection, DetectionEngine } from "./hooks/useHandDetection";
+import { useHandDetection } from "./hooks/useHandDetection";
 import Robot from "./components/Robot";
 import BackgroundManager from "./components/BackgroundManager";
 import PlayingView from "./components/PlayingView";
@@ -92,8 +92,7 @@ const App: React.FC = () => {
     sequenceRef.current = sequence;
   }, [status, currentBeat, sequence]);
 
-  // Detection Engine Selection - MediaPipe is faster & more stable on mobile (2-10ms vs 15-50ms)
-  const [detectionEngine] = useState<DetectionEngine>("mediapipe");
+  // Detection Engine: MediaPipe only (faster & more stable across all platforms)
 
   // Infinite Mode State
   const [currentBpm, setCurrentBpm] = useState(95);
@@ -117,10 +116,9 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // Hand detection - runs at maximum rate (worker handles heavy lifting)
-  const { isCameraReady, landmarksRef, fingerCountRef, isModelLoading, currentEngine } = useHandDetection(
+  // Hand detection - MediaPipe for all platforms
+  const { isCameraReady, landmarksRef, fingerCountRef, isModelLoading } = useHandDetection(
     videoRef,
-    detectionEngine,
     handleFingerCountUpdate,
     currentBpm
   );

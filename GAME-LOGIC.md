@@ -152,8 +152,7 @@ src/
 ├── types.ts                   # GameStatus enum, interfaces
 ├── constants.ts               # Track configs, chart generation
 ├── hooks/
-│   ├── useHandDetection.ts    # Unified detection hook
-│   ├── useMediaPipe.ts        # MediaPipe-specific (legacy)
+│   ├── useHandDetection.ts    # MediaPipe hand detection (all platforms)
 │   ├── useRhythmEngine.ts     # Programmatic music engine
 │   ├── useVideoRecorder.ts    # Recording hook
 │   └── videoRecorder.worker.ts # Frame processing worker
