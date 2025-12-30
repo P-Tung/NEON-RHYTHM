@@ -437,11 +437,13 @@ const App: React.FC = () => {
 
   // Memory Cleanup: Clear all temp data, timers and frames
   const cleanupTempData = useCallback(() => {
-    // 1. Clear standard timers
+    // 1. Clear standard timers and animation frames
+    // Note: gameTimersRef may contain both setTimeout IDs and requestAnimationFrame IDs
     gameTimersRef.current.forEach((id) => {
       if (id) {
         clearInterval(id as any);
         clearTimeout(id as any);
+        cancelAnimationFrame(id as any); // Also cancel any RAF IDs from countdown
       }
     });
     gameTimersRef.current = [];
@@ -994,6 +996,8 @@ const App: React.FC = () => {
   };
 
   // Separated countdown logic for cleaner code
+  // Uses requestAnimationFrame + AudioContext.currentTime for precise timing
+  // This avoids setTimeout drift issues caused by JS event loop delays
   const startCountdown = (
     newSequence: number[],
     currentSessionId: number,
@@ -1004,32 +1008,52 @@ const App: React.FC = () => {
     const ctx = audioCtxRef.current;
     if (!ctx) return;
 
-    // We want 5 beeps leading up to the first beat
-    // Beep 1: firstBeatTime - 5 * beatDuration
-    // Beep 2: firstBeatTime - 4 * beatDuration
-    // Beep 3: firstBeatTime - 3 * beatDuration
-    // Beep 4: firstBeatTime - 2 * beatDuration
-    // Beep 5: firstBeatTime - 1 * beatDuration
-    // GO: firstBeatTime
+    // Calculate exact times for each countdown beat using AudioContext clock
+    // This ensures perfect sync with the music regardless of CPU load
+    const countdownBeats = [5, 4, 3, 2, 1, 0].map((count) => ({
+      count,
+      time: firstBeatTime - count * beatDuration,
+      triggered: false,
+    }));
 
-    [5, 4, 3, 2, 1, 0].forEach((count) => {
-      const beepTime = firstBeatTime - count * beatDuration;
-      const delay = Math.max(0, (beepTime - ctx.currentTime) * 1000);
+    let rafId: number;
 
-      const timerId = setTimeout(() => {
-        if (sessionIdRef.current !== currentSessionId) return;
+    const tick = () => {
+      // Early exit if session changed (game cancelled/restarted)
+      if (sessionIdRef.current !== currentSessionId) {
+        cancelAnimationFrame(rafId);
+        return;
+      }
 
-        if (count > 0) {
-          setCountdown(count);
-          playCountdownBeep(count);
-        } else {
-          setCountdown(null);
-          playCountdownBeep(0);
-          // REMOVED: runSequence is now called immediately in startGame
+      const now = ctx.currentTime;
+
+      // Check each beat and trigger if AudioContext time has passed
+      countdownBeats.forEach((beat) => {
+        if (!beat.triggered && now >= beat.time) {
+          beat.triggered = true;
+
+          if (beat.count > 0) {
+            setCountdown(beat.count);
+            playCountdownBeep(beat.count);
+          } else {
+            setCountdown(null);
+            playCountdownBeep(0);
+          }
         }
-      }, delay);
-      gameTimersRef.current.push(timerId);
-    });
+      });
+
+      // Continue loop until all beats are triggered
+      const allDone = countdownBeats.every((b) => b.triggered);
+      if (!allDone) {
+        rafId = requestAnimationFrame(tick);
+      }
+    };
+
+    // Start the animation frame loop
+    rafId = requestAnimationFrame(tick);
+
+    // Store rafId for cleanup (cast to match timer type)
+    gameTimersRef.current.push(rafId as unknown as ReturnType<typeof setTimeout>);
   };
 
   const runSequence = (
@@ -1175,6 +1199,7 @@ const App: React.FC = () => {
               gameTimersRef.current.forEach((id) => {
                 clearTimeout(id as any);
                 clearInterval(id as any);
+                cancelAnimationFrame(id as any); // Also cancel countdown RAF
               });
               gameTimersRef.current = [];
               setRevealedResults([...results]);
