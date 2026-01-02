@@ -14,7 +14,7 @@ interface PlayingViewProps {
   countdown: number | null;
   sequence: number[];
   currentBeat: number;
-  localResults: (boolean | null)[];
+  onStop: () => void;
 }
 
 const PlayingView: React.FC<PlayingViewProps> = ({
@@ -26,7 +26,7 @@ const PlayingView: React.FC<PlayingViewProps> = ({
   countdown,
   sequence,
   currentBeat,
-  localResults,
+  onStop,
 }) => {
   if (
     status !== GameStatus.PLAYING &&
@@ -37,7 +37,7 @@ const PlayingView: React.FC<PlayingViewProps> = ({
   }
 
   return (
-    <div className="w-full h-full flex flex-col justify-between py-6 md:py-12">
+    <div className="w-full h-full flex flex-col justify-between py-6 md:py-12 relative">
       {status !== GameStatus.TRANSITION && (
         <GameHeader
           currentRound={currentRound}
@@ -68,18 +68,25 @@ const PlayingView: React.FC<PlayingViewProps> = ({
           </div>
         )}
 
-        {status === GameStatus.ANALYZING &&
-          !localResults.some((r) => r === false) && (
-            <div className="flex flex-col items-center gap-4 md:gap-6 animate-pop px-4">
-              <h2 className="text-2xl md:text-4xl font-black uppercase text-glow animate-pulse">
-                ANALYZING...
-              </h2>
-              <p className="text-white/60 text-xs md:text-sm text-center">
-                The AI Judge is watching your moves
-              </p>
-            </div>
-          )}
+        {status === GameStatus.ANALYZING && (
+          <div className="flex flex-col items-center gap-4 md:gap-6 animate-pop px-4">
+            <h2 className="text-2xl md:text-4xl font-black uppercase text-glow animate-pulse">
+              ANALYZING...
+            </h2>
+          </div>
+        )}
       </div>
+
+      {status === GameStatus.PLAYING && (
+        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-50">
+          <button
+            onClick={onStop}
+            className="px-12 py-5 bg-red-600/80 hover:bg-red-700 text-white font-black uppercase tracking-[0.2em] text-lg rounded-2xl shadow-[0_0_30px_rgba(220,38,38,0.4)] backdrop-blur-md active:scale-95 transition-all border border-red-500/30"
+          >
+            STOP
+          </button>
+        </div>
+      )}
     </div>
   );
 };
