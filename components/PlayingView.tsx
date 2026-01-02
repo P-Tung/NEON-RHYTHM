@@ -79,17 +79,6 @@ const PlayingView: React.FC<PlayingViewProps> = ({
             </h2>
           </div>
         )}
-
-        {status === GameStatus.ROUND_END && (
-          <div className="flex flex-col items-center gap-4 md:gap-6 animate-pop px-4">
-            <h2 className="text-2xl md:text-4xl font-black uppercase text-glow text-white/90">
-              ROUND COMPLETE
-            </h2>
-            <p className="text-lg md:text-xl font-bold uppercase tracking-widest text-[#00ffff]/80">
-              SELECT YOUR RESULT
-            </p>
-          </div>
-        )}
       </div>
 
       {status === GameStatus.ROUND_END && (
