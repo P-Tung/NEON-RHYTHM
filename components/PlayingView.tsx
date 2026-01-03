@@ -15,6 +15,8 @@ interface PlayingViewProps {
   sequence: number[];
   currentBeat: number;
   localResults: (boolean | null)[];
+  onPass: () => void;
+  onFail: () => void;
 }
 
 const PlayingView: React.FC<PlayingViewProps> = ({
@@ -27,11 +29,14 @@ const PlayingView: React.FC<PlayingViewProps> = ({
   sequence,
   currentBeat,
   localResults,
+  onPass,
+  onFail,
 }) => {
   if (
     status !== GameStatus.PLAYING &&
     status !== GameStatus.ANALYZING &&
-    status !== GameStatus.TRANSITION
+    status !== GameStatus.TRANSITION &&
+    status !== GameStatus.ROUND_END
   ) {
     return null;
   }
@@ -79,6 +84,24 @@ const PlayingView: React.FC<PlayingViewProps> = ({
               </p>
             </div>
           )}
+        {status === GameStatus.ROUND_END && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm z-50 animate-in fade-in duration-300 pointer-events-auto">
+            <div className="flex gap-4 md:gap-8 scale-150">
+              <button
+                onClick={onFail}
+                className="w-24 h-24 rounded-full bg-red-500 hover:bg-red-400 text-white font-black text-xl shadow-[0_0_40px_rgba(239,68,68,0.6)] border-4 border-white/20 transition-all hover:scale-110 active:scale-95 flex items-center justify-center"
+              >
+                FAIL
+              </button>
+              <button
+                onClick={onPass}
+                className="w-24 h-24 rounded-full bg-green-500 hover:bg-green-400 text-white font-black text-xl shadow-[0_0_40px_rgba(34,197,94,0.6)] border-4 border-white/20 transition-all hover:scale-110 active:scale-95 flex items-center justify-center"
+              >
+                PASS
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
