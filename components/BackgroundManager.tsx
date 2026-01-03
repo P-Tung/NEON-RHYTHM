@@ -1,10 +1,13 @@
 import React from "react";
+import WebcamPreview from "./WebcamPreview";
 import SafeZone from "./SafeZone";
 import { GameStatus } from "../types";
 
 interface BackgroundManagerProps {
   canvasRef: React.RefObject<HTMLCanvasElement | null>;
   videoRef: React.RefObject<HTMLVideoElement | null>;
+  landmarksRef: React.MutableRefObject<any>;
+  fingerCountRef: React.MutableRefObject<number>;
   isCameraReady: boolean;
   videoOpacity: number;
   showFlash: boolean;
@@ -14,6 +17,8 @@ interface BackgroundManagerProps {
 const BackgroundManager: React.FC<BackgroundManagerProps> = ({
   canvasRef,
   videoRef,
+  landmarksRef,
+  fingerCountRef,
   isCameraReady,
   videoOpacity,
   showFlash,
@@ -37,6 +42,17 @@ const BackgroundManager: React.FC<BackgroundManagerProps> = ({
         playsInline
         muted
         autoPlay
+      />
+
+      {/* SKELETON OVERLAY */}
+      <WebcamPreview
+        videoRef={videoRef}
+        landmarksRef={landmarksRef}
+        fingerCountRef={fingerCountRef}
+        isCameraReady={isCameraReady}
+        showFingerVector={
+          status === GameStatus.LOADING || status === GameStatus.MENU
+        }
       />
 
       {/* 9:16 SAFE ZONE FOR DESKTOP */}
