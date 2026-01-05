@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import * as THREE from "three";
 import React from "react";
 
 export enum GameStatus {
@@ -48,95 +47,7 @@ export interface GeminiResponse {
   detected_counts: number[];
 }
 
-export type HandType = "left" | "right";
-
-export enum CutDirection {
-  UP = "UP",
-  DOWN = "DOWN",
-  LEFT = "LEFT",
-  RIGHT = "RIGHT",
-  ANY = "ANY",
-}
-
-export interface NoteData {
-  id: string;
-  time: number;
-  lineIndex: number;
-  lineLayer: number;
-  type: HandType;
-  cutDirection: CutDirection;
-  hit?: boolean;
-  hitTime?: number;
-  missed?: boolean;
-}
-
-export interface HandPositions {
-  left: THREE.Vector3 | null;
-  right: THREE.Vector3 | null;
-  leftVelocity: THREE.Vector3 | null;
-  rightVelocity: THREE.Vector3 | null;
-}
-
 export const COLORS = {
   left: "#ff0000",
   right: "#ffffff",
 };
-
-// Fix for R3F types
-// Augment React's JSX namespace
-declare module "react" {
-  namespace JSX {
-    interface IntrinsicElements {
-      ambientLight: any;
-      pointLight: any;
-      spotLight: any;
-      color: any;
-      fog: any;
-      mesh: any;
-      group: any;
-      position: any;
-      planeGeometry: any;
-      meshStandardMaterial: any;
-      sphereGeometry: any;
-      meshBasicMaterial: any;
-      meshPhysicalMaterial: any;
-      octahedronGeometry: any;
-      extrudeGeometry: any;
-      cylinderGeometry: any;
-      torusGeometry: any;
-      ringGeometry: any;
-      capsuleGeometry: any;
-      primitive: any;
-      [elemName: string]: any;
-    }
-  }
-}
-
-// Augment Global JSX namespace
-declare global {
-  namespace JSX {
-    interface IntrinsicElements {
-      ambientLight: any;
-      pointLight: any;
-      spotLight: any;
-      color: any;
-      fog: any;
-      mesh: any;
-      group: any;
-      position: any;
-      planeGeometry: any;
-      meshStandardMaterial: any;
-      sphereGeometry: any;
-      meshBasicMaterial: any;
-      meshPhysicalMaterial: any;
-      octahedronGeometry: any;
-      extrudeGeometry: any;
-      cylinderGeometry: any;
-      torusGeometry: any;
-      ringGeometry: any;
-      capsuleGeometry: any;
-      primitive: any;
-      [elemName: string]: any;
-    }
-  }
-}
