@@ -226,9 +226,7 @@ export const useHandDetection = (
     // ============== Tracking Stream Setup (LOW RES ONLY) ==============
     const startTrackingCamera = async () => {
       try {
-        // Stream 2: LOW-RES TRACKING STREAM
-        // Purpose: 10x faster MediaPipe detection with minimal CPU usage
-        const trackingStream = await navigator.mediaDevices.getUserMedia({
+        const stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: "user",
             width: { ideal: 320 },
@@ -238,15 +236,17 @@ export const useHandDetection = (
         });
 
         if (trackingVideoRef.current && isActive) {
-          trackingVideoRef.current.srcObject = trackingStream;
+          trackingVideoRef.current.srcObject = stream;
           trackingVideoRef.current.onloadeddata = () => {
-            if (isActive) {
-              console.log("[HandDetection] Tracking stream ready");
+            if (isActive && trackingVideoRef.current) {
+              const { videoWidth, videoHeight } = trackingVideoRef.current;
+              console.log(
+                `[HandDetection] Tracking ready: ${videoWidth}x${videoHeight}`
+              );
               setIsTrackingReady(true);
               startLoop();
             }
           };
-          // Explicitly play the hidden video
           await trackingVideoRef.current.play();
         }
       } catch (err) {

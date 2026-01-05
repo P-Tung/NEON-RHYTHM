@@ -1464,7 +1464,12 @@ const App: React.FC = () => {
         {status === GameStatus.LOADING && (
           <StartScreen
             onStart={handleStartGame}
-            isAssetsReady={isAssetsReady && !isModelLoading && isTrackingReady}
+            isAssetsReady={
+              isAssetsReady &&
+              !isModelLoading &&
+              isTrackingReady &&
+              isCameraReady
+            }
           />
         )}
 
