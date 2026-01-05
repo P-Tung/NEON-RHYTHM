@@ -70,7 +70,9 @@ export const useVideoRecorder = (
     const startHighResCamera = async () => {
       try {
         console.log(
-          "[VideoRecorder] Initializing High-Res Camera (1280x720)..."
+          `[VideoRecorder] Initializing High-Res Camera (${
+            IS_MOBILE ? "720x1280" : "1280x720"
+          })...`
         );
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
@@ -108,12 +110,18 @@ export const useVideoRecorder = (
     };
   }, [videoRef]);
 
-  // Initialize worker and canvas on mount
   useEffect(() => {
     // Create canvas for MediaRecorder (main thread canvas)
     const canvas = document.createElement("canvas");
-    canvas.width = IS_MOBILE ? 360 : 720;
-    canvas.height = IS_MOBILE ? 640 : 1280;
+    // Use 4:3 for desktop, 9:16 for mobile TikTok style
+    if (IS_MOBILE) {
+      canvas.width = 360;
+      canvas.height = 640;
+    } else {
+      canvas.width = 1280; // 16:9
+      canvas.height = 720;
+    }
+
     canvasRef.current = canvas;
     ctxRef.current = canvas.getContext("2d", {
       alpha: false,

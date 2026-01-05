@@ -226,10 +226,9 @@ export const useHandDetection = (
     // ============== Tracking Stream Setup (LOW RES ONLY) ==============
     const startTrackingCamera = async () => {
       try {
-        console.log(
-          "[HandDetection] Starting Low-Res Tracking Stream (320x240)..."
-        );
-        const stream = await navigator.mediaDevices.getUserMedia({
+        // Stream 2: LOW-RES TRACKING STREAM
+        // Purpose: 10x faster MediaPipe detection with minimal CPU usage
+        const trackingStream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: "user",
             width: { ideal: 320 },
@@ -239,7 +238,7 @@ export const useHandDetection = (
         });
 
         if (trackingVideoRef.current && isActive) {
-          trackingVideoRef.current.srcObject = stream;
+          trackingVideoRef.current.srcObject = trackingStream;
           trackingVideoRef.current.onloadeddata = () => {
             if (isActive) {
               console.log("[HandDetection] Tracking stream ready");
