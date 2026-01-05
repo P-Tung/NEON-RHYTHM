@@ -24,6 +24,7 @@ export const useVideoRecorder = (
     isRecording: false,
     videoBlob: null,
   });
+  const [isCameraReady, setIsCameraReady] = useState(false);
 
   // Worker and canvas refs
   const workerRef = useRef<Worker | null>(null);
@@ -49,9 +50,7 @@ export const useVideoRecorder = (
   const currentRoundRef = useRef<number>(currentRound || 1);
   const currentBpmRef = useRef<number>(currentBpm || 95);
 
-  // Target FPS for frame sending (higher = smoother video)
-  // 30 FPS is standard for TikTok/Social media on mobile
-  // 60 FPS on desktop for smoother playback
+  // Target FPS for frame sending
   const TARGET_FPS = IS_MOBILE ? 30 : 60;
   const FRAME_INTERVAL = 1000 / TARGET_FPS;
 
@@ -63,6 +62,51 @@ export const useVideoRecorder = (
   useEffect(() => {
     if (currentBpm !== undefined) currentBpmRef.current = currentBpm;
   }, [currentBpm]);
+
+  // ============== HIGH-RES PREVIEW & RECORDING CAMERA SETUP ==============
+  useEffect(() => {
+    let isActive = true;
+
+    const startHighResCamera = async () => {
+      try {
+        console.log(
+          "[VideoRecorder] Initializing High-Res Camera (1280x720)..."
+        );
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: "user",
+            width: { ideal: IS_MOBILE ? 720 : 1280 },
+            height: { ideal: IS_MOBILE ? 1280 : 720 },
+            frameRate: { ideal: IS_MOBILE ? 30 : 60 },
+          },
+        });
+
+        if (videoRef.current && isActive) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.onloadeddata = () => {
+            if (isActive) {
+              console.log("[VideoRecorder] High-res stream ready");
+              setIsCameraReady(true);
+            }
+          };
+          await videoRef.current.play();
+        }
+      } catch (err) {
+        console.error("High-Res Camera Error:", err);
+      }
+    };
+
+    startHighResCamera();
+
+    return () => {
+      isActive = false;
+      if (videoRef.current && videoRef.current.srcObject) {
+        const stream = videoRef.current.srcObject as MediaStream;
+        stream.getTracks().forEach((t) => t.stop());
+        videoRef.current.srcObject = null;
+      }
+    };
+  }, [videoRef]);
 
   // Initialize worker and canvas on mount
   useEffect(() => {
@@ -363,6 +407,7 @@ export const useVideoRecorder = (
   return {
     isRecording: recorderState.isRecording,
     videoBlob: recorderState.videoBlob,
+    isCameraReady,
     startRecording,
     stopRecording,
     setOverlayText,

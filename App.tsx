@@ -142,9 +142,9 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // Hand detection - MediaPipe for all platforms
-  const { isCameraReady, landmarksRef, fingerCountRef, isModelLoading } =
-    useHandDetection(videoRef, handleFingerCountUpdate, currentBpm);
+  // Hand detection - MediaPipe for all platforms (Internal tracking only)
+  const { isTrackingReady, landmarksRef, fingerCountRef, isModelLoading } =
+    useHandDetection(handleFingerCountUpdate, currentBpm);
   const rhythmEngine = useRhythmEngine(
     audioCtxRef.current,
     recorderGainRef.current
@@ -190,7 +190,7 @@ const App: React.FC = () => {
   const [videoOverlayRound, setVideoOverlayRound] = useState(1);
   const [videoOverlayBpm, setVideoOverlayBpm] = useState(95);
 
-  // Video Recorder Hook (uses separate overlay state that only updates with new sequence)
+  // Video Recorder Hook (Handles High-Res Camera Stream)
   const {
     startRecording,
     stopRecording,
@@ -200,6 +200,7 @@ const App: React.FC = () => {
     setFailOverlay,
     clearVideo,
     isActuallyRecording,
+    isCameraReady, // High-res preview is ready
   } = useVideoRecorder(
     videoRef,
     audioStreamDestRef.current?.stream,
@@ -1463,7 +1464,7 @@ const App: React.FC = () => {
         {status === GameStatus.LOADING && (
           <StartScreen
             onStart={handleStartGame}
-            isAssetsReady={isAssetsReady && !isModelLoading}
+            isAssetsReady={isAssetsReady && !isModelLoading && isTrackingReady}
           />
         )}
 

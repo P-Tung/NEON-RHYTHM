@@ -108,14 +108,15 @@ const getMode = (arr: number[]): number => {
 
 // ============== Unified Hook (MediaPipe Only) ==============
 
+// ============== Unified Hook (MediaPipe Only) ==============
+
 export const useHandDetection = (
-  videoRef: React.RefObject<HTMLVideoElement | null>,
   onCountUpdate?: (count: number) => void,
   currentBpm?: number
 ) => {
-  const [isCameraReady, setIsCameraReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isModelLoading, setIsModelLoading] = useState(true);
+  const [isTrackingReady, setIsTrackingReady] = useState(false);
 
   // Shared refs
   const landmarkerRef = useRef<HandLandmarker | null>(null);
@@ -126,6 +127,9 @@ export const useHandDetection = (
   const isProcessingRef = useRef<boolean>(false);
   const fingerHistoryRef = useRef<number[]>([]);
   const lastDetectionTimeRef = useRef<number>(0);
+
+  // Tracking-specific refs (hidden stream)
+  const trackingVideoRef = useRef<HTMLVideoElement | null>(null);
 
   // Track model ready state
   const isModelReadyRef = useRef<boolean>(false);
@@ -151,6 +155,21 @@ export const useHandDetection = (
     let isActive = true;
     let isTabVisible = true;
 
+    // Create a hidden video element for tracking if it doesn't exist
+    if (!trackingVideoRef.current) {
+      const v = document.createElement("video");
+      v.autoplay = true;
+      v.playsInline = true;
+      v.muted = true;
+      v.style.display = "none";
+      v.style.position = "absolute";
+      v.style.width = "320px"; // Fixed size for tracking
+      v.style.height = "240px";
+      v.style.opacity = "0";
+      trackingVideoRef.current = v;
+      document.body.appendChild(v);
+    }
+
     const handleVisibilityChange = () => {
       isTabVisible = !document.hidden;
     };
@@ -160,7 +179,6 @@ export const useHandDetection = (
     const setupMediaPipe = async () => {
       try {
         setIsModelLoading(true);
-        console.log("[MediaPipe] Initializing...");
 
         const vision = await FilesetResolver.forVisionTasks(
           "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.9/wasm"
@@ -168,13 +186,11 @@ export const useHandDetection = (
 
         if (!isActive) return;
 
-        // Try GPU delegate first (faster), fallback to CPU/WASM if it fails
         let landmarker: HandLandmarker | null = null;
-        const delegates = IS_MOBILE ? ["CPU"] : ["GPU", "CPU"]; // Mobile: WASM is more stable
+        const delegates = IS_MOBILE ? ["CPU"] : ["GPU", "CPU"];
 
         for (const delegate of delegates) {
           try {
-            console.log(`[MediaPipe] Trying ${delegate} delegate...`);
             landmarker = await HandLandmarker.createFromOptions(vision, {
               baseOptions: {
                 modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`,
@@ -182,22 +198,14 @@ export const useHandDetection = (
               },
               runningMode: "VIDEO",
               numHands: 1,
-              minHandDetectionConfidence: 0.4, // Lowered for faster detection
+              minHandDetectionConfidence: 0.4,
               minHandPresenceConfidence: 0.4,
               minTrackingConfidence: 0.4,
             });
-            console.log(
-              `[MediaPipe] Successfully initialized with ${delegate} delegate`
-            );
-            break; // Success, exit loop
+            break;
           } catch (delegateError) {
-            console.warn(
-              `[MediaPipe] ${delegate} delegate failed:`,
-              delegateError
-            );
-            if (delegate === delegates[delegates.length - 1]) {
-              throw delegateError; // Last option failed, throw error
-            }
+            if (delegate === delegates[delegates.length - 1])
+              throw delegateError;
           }
         }
 
@@ -209,45 +217,51 @@ export const useHandDetection = (
         landmarkerRef.current = landmarker;
         isModelReadyRef.current = true;
         setIsModelLoading(false);
-        console.log("[MediaPipe] Ready for detection");
       } catch (err: any) {
-        console.error("Error initializing MediaPipe:", err);
         setError(`Failed to load MediaPipe: ${err.message}`);
         setIsModelLoading(false);
       }
     };
 
-    // ============== Camera Setup ==============
-    const startCamera = async () => {
+    // ============== Tracking Stream Setup (LOW RES ONLY) ==============
+    const startTrackingCamera = async () => {
       try {
+        console.log(
+          "[HandDetection] Starting Low-Res Tracking Stream (320x240)..."
+        );
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: "user",
-            width: { ideal: 640 },
-            height: { ideal: 480 },
-            frameRate: { ideal: 60 },
+            width: { ideal: 320 },
+            height: { ideal: 240 },
+            frameRate: { ideal: 30 },
           },
         });
 
-        if (videoRef.current && isActive) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.onloadeddata = () => {
+        if (trackingVideoRef.current && isActive) {
+          trackingVideoRef.current.srcObject = stream;
+          trackingVideoRef.current.onloadeddata = () => {
             if (isActive) {
-              setIsCameraReady(true);
+              console.log("[HandDetection] Tracking stream ready");
+              setIsTrackingReady(true);
               startLoop();
             }
           };
+          // Explicitly play the hidden video
+          await trackingVideoRef.current.play();
         }
       } catch (err) {
-        console.error("Camera Error:", err);
-        setError("Could not access camera.");
+        console.error("Tracking Camera Error:", err);
+        setError("Could not access camera for tracking.");
       }
     };
 
     // ============== Detection Loop ==============
-    const predictWebcam = async (time?: number) => {
+    const predictWebcam = async () => {
+      const trackingVideo = trackingVideoRef.current;
+
       if (
-        !videoRef.current ||
+        !trackingVideo ||
         !landmarkerRef.current ||
         !isActive ||
         !isTabVisible ||
@@ -258,65 +272,37 @@ export const useHandDetection = (
         return;
       }
 
-      const video = videoRef.current;
-      if (video.videoWidth <= 0 || video.videoHeight <= 0) {
-        scheduleNextFrame();
-        return;
-      }
+      const startTimeMs = performance.now();
 
-      const startTimeMs = time || performance.now();
-
-      // Throttling for CPU/battery optimization
       if (startTimeMs - lastDetectionTimeRef.current < DETECTION_INTERVAL) {
         scheduleNextFrame();
         return;
       }
+
+      if (trackingVideo.readyState < 2) {
+        scheduleNextFrame();
+        return;
+      }
+
       lastDetectionTimeRef.current = startTimeMs;
       isProcessingRef.current = true;
 
       try {
         let currentCount = 0;
-        const ratio = video.videoWidth / video.videoHeight;
+        const ratio = trackingVideo.videoWidth / trackingVideo.videoHeight;
 
-        // DOWNSCALING for mobile: Create a low-res bitmap to process (320x240)
-        // This reduces the pixels the AI processes by 75%, making it MUCH faster on mobile
-        if (IS_MOBILE) {
-          const bitmap = await createImageBitmap(video, {
-            resizeWidth: 320,
-            resizeHeight: 240,
-            resizeQuality: "low",
-          });
+        const results = landmarkerRef.current.detectForVideo(
+          trackingVideo,
+          performance.now()
+        );
 
-          // Detect using the downscaled bitmap
-          const results = landmarkerRef.current.detectForVideo(
-            bitmap,
-            Math.round(video.currentTime * 1000)
-          );
-
-          bitmap.close(); // Clean up memory immediately
-
-          if (results.landmarks && results.landmarks.length > 0) {
-            landmarksRef.current = results.landmarks[0];
-            currentCount = countFingers(results.landmarks[0], ratio);
-          } else {
-            landmarksRef.current = null;
-          }
+        if (results.landmarks && results.landmarks.length > 0) {
+          landmarksRef.current = results.landmarks[0];
+          currentCount = countFingers(results.landmarks[0], ratio);
         } else {
-          // Desktop: Use video element directly - more efficient
-          const results = landmarkerRef.current.detectForVideo(
-            video,
-            performance.now()
-          );
-
-          if (results.landmarks && results.landmarks.length > 0) {
-            landmarksRef.current = results.landmarks[0];
-            currentCount = countFingers(results.landmarks[0], ratio);
-          } else {
-            landmarksRef.current = null;
-          }
+          landmarksRef.current = null;
         }
 
-        // Smoothing
         const historySize = getHistorySize(currentBpmRef.current);
         fingerHistoryRef.current.push(currentCount);
         if (fingerHistoryRef.current.length > historySize) {
@@ -345,9 +331,9 @@ export const useHandDetection = (
 
     const scheduleNextFrame = () => {
       if (!isActive) return;
-      const video = videoRef.current;
-      if (video && (video as any).requestVideoFrameCallback) {
-        (video as any).requestVideoFrameCallback(predictWebcam);
+      const trackingVideo = trackingVideoRef.current;
+      if (trackingVideo && (trackingVideo as any).requestVideoFrameCallback) {
+        (trackingVideo as any).requestVideoFrameCallback(predictWebcam);
       } else {
         requestRef.current = requestAnimationFrame(() => predictWebcam());
       }
@@ -357,9 +343,8 @@ export const useHandDetection = (
       scheduleNextFrame();
     };
 
-    // Initialize MediaPipe and Camera
     setupMediaPipe();
-    startCamera();
+    startTrackingCamera();
 
     return () => {
       isActive = false;
@@ -367,25 +352,28 @@ export const useHandDetection = (
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       if (requestRef.current) cancelAnimationFrame(requestRef.current);
 
-      // Cleanup MediaPipe
       if (landmarkerRef.current) {
         landmarkerRef.current.close();
         landmarkerRef.current = null;
       }
 
-      // Cleanup camera
-      if (videoRef.current) {
-        const video = videoRef.current;
+      if (trackingVideoRef.current) {
+        const video = trackingVideoRef.current;
         if (video.srcObject) {
           const stream = video.srcObject as MediaStream;
           stream.getTracks().forEach((t) => t.stop());
+          video.srcObject = null;
         }
+        if (video.parentNode) {
+          video.parentNode.removeChild(video);
+        }
+        trackingVideoRef.current = null;
       }
     };
-  }, [videoRef]);
+  }, []);
 
   return {
-    isCameraReady,
+    isTrackingReady,
     error,
     landmarksRef,
     fingerCountRef,
